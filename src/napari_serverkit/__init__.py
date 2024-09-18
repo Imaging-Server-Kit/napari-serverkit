@@ -1,0 +1,1 @@
+from napari_serverkit._widget import ServerKitWidget

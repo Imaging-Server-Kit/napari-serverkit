@@ -1,0 +1,10 @@
+name: napari-serverkit
+display_name: Napari Server Kit
+contributions:
+  commands:
+    - id: napari-serverkit.run
+      title: Server Kit
+      python_name: napari_serverkit:ServerKitWidget
+  widgets:
+    - command: napari-serverkit.run
+      display_name: Server Kit
