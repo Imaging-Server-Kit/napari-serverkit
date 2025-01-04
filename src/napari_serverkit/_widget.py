@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt
 import numpy as np
 import imaging_server_kit as serverkit
+import webbrowser
 
 
 class ServerKitWidget(QWidget):
@@ -27,7 +28,7 @@ class ServerKitWidget(QWidget):
         super().__init__()
         self.viewer = napari_viewer
 
-        self.api_client = serverkit.ServerKitAPIClient()
+        self.client = serverkit.Client()
 
         self.cbs_image = []
         self.cbs_labels = []
@@ -64,13 +65,18 @@ class ServerKitWidget(QWidget):
         self.sample_image_btn.clicked.connect(self._trigger_sample_image_download)
         grid_layout.addWidget(self.sample_image_btn, 2, 0, 1, 3)
 
+        # Algo info
+        self.algo_info_btn = QPushButton("🌐 Documentation", self)
+        self.algo_info_btn.clicked.connect(self._trigger_algo_info_link)
+        grid_layout.addWidget(self.algo_info_btn, 3, 0, 1, 3)
+
         # Algorithm parameters (dynamic UI)
         algo_params_group = QGroupBox()
         algo_params_group.setTitle("Parameters")
         self.algo_params_layout = QGridLayout()
         algo_params_group.setLayout(self.algo_params_layout)
         algo_params_group.layout().setContentsMargins(5, 5, 5, 5)
-        grid_layout.addWidget(algo_params_group, 3, 0, 1, 3)
+        grid_layout.addWidget(algo_params_group, 4, 0, 1, 3)
 
         # # Trigger selection (#TODO)
         # grid_layout.addWidget(QLabel("Trigger", self), 4, 0)
@@ -105,16 +111,14 @@ class ServerKitWidget(QWidget):
     def _connect_to_server(self):
         self.cb_algorithms.clear()
 
-        server_ip = self.server_url_field.text()
-        status_code = self.api_client.connect(server_ip)
+        server_url = self.server_url_field.text()
+        status_code, contents = self.client.connect(server_url)
 
         if status_code == 200:
-            show_info(f"Connection established.")
-            self.cb_algorithms.addItems(self.api_client.algorithms)
-        elif status_code == -1:
-            show_error(f"{server_ip} unavailable.")
+            show_info(f"Connection established. Algorithms: {contents}")
+            self.cb_algorithms.addItems(self.client.algorithms)
         else:
-            show_error(f"Server error: {status_code}")
+            show_error(contents)
 
     def _on_layer_change(self, e):
         for cb_image in self.cbs_image:
@@ -155,7 +159,7 @@ class ServerKitWidget(QWidget):
 
     @thread_worker
     def _run_algorithm(self, selected_algorithm, **algo_params) -> List[Tuple]:
-        return self.api_client.run_algorithm(selected_algorithm, **algo_params)
+        return self.client.run_algorithm(selected_algorithm, **algo_params)
 
     def _trigger_run_algorithm(self):
         selected_algorithm = self.cb_algorithms.currentText()
@@ -170,28 +174,37 @@ class ServerKitWidget(QWidget):
         worker.returned.connect(self._thread_returned)
         worker.start()
 
-    def _thread_returned(self, payload):
+    def _thread_returned(self, payload: List):
         self.pbar.setMaximum(1)
-        # Add the right layer into the viewer
-        for layer_data, layer_params, layer_type in payload:
-            if layer_type == "image":
-                self.viewer.add_image(layer_data, **layer_params)
-            elif layer_type == "labels":
-                self.viewer.add_labels(layer_data, **layer_params)
-            elif layer_type == "shapes":
-                self.viewer.add_shapes(layer_data, **layer_params)
-            elif layer_type == "points":
-                self.viewer.add_points(layer_data, **layer_params)
-            elif layer_type == "vectors":
-                self.viewer.add_vectors(layer_data, **layer_params)
-            elif layer_type == "tracks":
-                self.viewer.add_tracks(layer_data, **layer_params)
-            else:
-                show_warning(f"Unhandled layer type: {layer_type}")
+
+        if len(payload) == 0:
+            show_error("Algorithm failed.")
+        else:
+            # Add the right layer into the viewer
+            for layer_data, layer_params, layer_type in payload:
+                if layer_type == "image":
+                    self.viewer.add_image(layer_data, **layer_params)
+                elif layer_type == "labels":
+                    self.viewer.add_labels(layer_data, **layer_params)
+                elif layer_type == "boxes":
+                    self.viewer.add_shapes(layer_data, **layer_params)
+                elif layer_type == "points":
+                    self.viewer.add_points(layer_data, **layer_params)
+                elif layer_type == "vectors":
+                    self.viewer.add_vectors(layer_data, **layer_params)
+                elif layer_type == "tracks":
+                    self.viewer.add_tracks(layer_data, **layer_params)
+                # else:
+                #     show_warning(f"Unhandled layer type: {layer_type}")
 
     def _handle_algorithm_changed(self, selected_algorithm):
+        if selected_algorithm == "":
+            return
         # Get a JSON Schema of the algorithm parameters from the server
-        algo_params = self.api_client.get_algorithm_parameters(selected_algorithm)
+        algo_params = self.client.get_algorithm_parameters(selected_algorithm)
+        if algo_params == -1:
+            show_error("Could not get algorithm parameters.")
+            return
 
         # Clean-up the previous dynamic UI layout
         for i in reversed(range(self.algo_params_layout.count())):
@@ -246,7 +259,8 @@ class ServerKitWidget(QWidget):
                 qt_widget = QLineEdit()
                 qt_widget.setText(param_values.get("default"))
             else:
-                qt_widget = None
+                continue
+
             self.algo_params_layout.addWidget(qt_widget, k, 1)
 
             self.dynamic_ui_state[param_name] = (param_widget_type, qt_widget)
@@ -268,7 +282,11 @@ class ServerKitWidget(QWidget):
                 if qt_widget.currentText() == "":
                     param_value = np.array([])
                 else:
-                    param_value = self.viewer.layers[qt_widget.currentText()].data
+                    # if param_widget_type == "shapes":
+                    param_value = np.array(
+                        self.viewer.layers[qt_widget.currentText()].data
+                    )
+                    # param_value = self.viewer.layers[qt_widget.currentText()].data
             elif param_widget_type == "dropdown":
                 param_value = qt_widget.currentText()
             elif param_widget_type == "int":
@@ -291,6 +309,21 @@ class ServerKitWidget(QWidget):
         if selected_algorithm == "":
             return
 
-        images = self.api_client.get_sample_images(selected_algorithm)
-        for image in images:
-            self.viewer.add_image(image)
+        images = self.client.get_sample_images(selected_algorithm)
+        if images == -1:
+            show_error("Could not get sample images")
+            return
+        else:
+            for image in images:
+                self.viewer.add_image(image)
+    
+    def _trigger_algo_info_link(self):
+        selected_algorithm = self.cb_algorithms.currentText()
+        if selected_algorithm is None:
+            return
+        
+        server_url = self.server_url_field.text()
+        algo_info_url = f"{server_url}/{selected_algorithm}/info"
+
+        print(f"Opening web page: {algo_info_url}")
+        webbrowser.open(algo_info_url)

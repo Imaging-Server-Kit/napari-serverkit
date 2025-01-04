@@ -1,1 +1,2 @@
 from napari_serverkit._widget import ServerKitWidget
+# from napari_serverkit._widget_sam import ServerKitSAMWidget
