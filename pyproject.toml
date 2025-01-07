@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "napari[all]>=0.4.16",
     "qtpy",
-    # "git+https://gitlab.com/epfl-center-for-imaging/imaging-server-kit.git"
+    "imaging-server-kit",
 ]
 
 [project.entry-points."napari.manifest"]

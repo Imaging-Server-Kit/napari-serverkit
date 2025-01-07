@@ -1,0 +1,165 @@
+name: Publish to PyPI, Build with PyApp, and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    if: contains(github.ref, 'tags')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -U setuptools setuptools_scm wheel twine build
+      - name: Build and publish
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TWINE_API_KEY }}
+        run: |
+          git tag
+          python -m build .
+          twine upload dist/*
+
+  build:
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    env:
+      PYAPP_PROJECT_NAME: 'napari_serverkit'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Extract PyPi package version
+        shell: bash
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      
+      - name: Download PyApp
+        shell: bash
+        run: |
+          curl https://github.com/ofek/pyapp/releases/latest/download/source.tar.gz -Lo pyapp-source.tar.gz
+          tar -xzf pyapp-source.tar.gz
+          mv pyapp-v* pyapp-latest
+
+      - name: Build executable
+        env:
+          PYAPP_PROJECT_VERSION: ${{ env.VERSION }}
+          PYAPP_PYTHON_VERSION: '3.9'
+        run: cargo build --release --manifest-path pyapp-latest/Cargo.toml
+
+      - name: Archive executable
+        shell: bash
+        working-directory: pyapp-latest/target/release
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            EXECUTABLE_NAME=${{ env.PYAPP_PROJECT_NAME }}_${{ runner.os }}_${{ env.VERSION }}.exe
+            mv pyapp.exe $EXECUTABLE_NAME
+            tar -czvf ../../../executable-windows.tar.gz $EXECUTABLE_NAME
+          elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            EXECUTABLE_NAME=${{ env.PYAPP_PROJECT_NAME }}_${{ runner.os }}_${{ env.VERSION }}
+            mv pyapp $EXECUTABLE_NAME
+            tar -czvf ../../../executable-linux.tar.gz $EXECUTABLE_NAME
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            EXECUTABLE_NAME=${{ env.PYAPP_PROJECT_NAME }}_${{ runner.os }}_${{ env.VERSION }}
+            mv pyapp $EXECUTABLE_NAME
+            tar -czvf ../../../executable-macos.tar.gz $EXECUTABLE_NAME
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: executable-${{ runner.os }}
+          path: executable-*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: executable-Windows
+          path: .
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: executable-Linux
+          path: .
+      
+      - name: Download MacOS artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: executable-macOS
+          path: .
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Windows executable to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./executable-windows.tar.gz
+          asset_name: executable-windows.tar.gz
+          asset_content_type: application/gzip
+      
+      - name: Upload Linux executable to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./executable-linux.tar.gz
+          asset_name: executable-linux.tar.gz
+          asset_content_type: application/gzip
+      
+      - name: Upload MacOS executable to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./executable-macos.tar.gz
+          asset_name: executable-macos.tar.gz
+          asset_content_type: application/gzip
