@@ -3,10 +3,7 @@
 
 Connect to an [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) server and run algorithms in [Napari](https://napari.org/stable/).
 
-<video autoplay loop muted playsinline>
-    <source src="assets/screencast.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-</video>
+[napari_screencast.webm](https://github.com/user-attachments/assets/eba9ae21-3f68-480c-857f-b0c326386c39)
 
 ## Installation
 
