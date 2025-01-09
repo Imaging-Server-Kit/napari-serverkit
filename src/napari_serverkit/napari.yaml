@@ -5,11 +5,6 @@ contributions:
     - id: napari-serverkit.run
       title: Connect to registry server
       python_name: napari_serverkit:ServerKitWidget
-    # - id: napari-serverkit.sam
-    #   title: Segment Anything Model
-    #   python_name: napari_serverkit:ServerKitSAMWidget
   widgets:
     - command: napari-serverkit.run
-      display_name: Server Kit Registry
-    # - command: napari-serverkit.sam
-    #   display_name: Segment Anything Model
+      display_name: Server Kit

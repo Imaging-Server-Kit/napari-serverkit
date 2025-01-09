@@ -51,7 +51,7 @@ class ServerKitWidget(QWidget):
         # Server URL
         grid_layout.addWidget(QLabel("Server URL", self), 0, 0)
         self.server_url_field = QLineEdit(self)
-        self.server_url_field.setText("http://localhost:7000")
+        self.server_url_field.setText("http://localhost:8000")
         grid_layout.addWidget(self.server_url_field, 0, 1)
         self.connect_btn = QPushButton("Connect", self)
         self.connect_btn.clicked.connect(self._connect_to_server)
@@ -323,7 +323,7 @@ class ServerKitWidget(QWidget):
 
     def _trigger_algo_info_link(self):
         selected_algorithm = self.cb_algorithms.currentText()
-        if selected_algorithm is None:
+        if selected_algorithm == "":
             return
 
         server_url = self.server_url_field.text()
