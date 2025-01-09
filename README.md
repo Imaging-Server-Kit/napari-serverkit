@@ -3,9 +3,8 @@
 
 Connect to an [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) server and run algorithms in [Napari](https://napari.org/stable/).
 
-
-<video width="320" autoplay loop>
-    <source src="./assets/screencast.mp4" type="video/webm">
+<video autoplay loop muted playsinline>
+    <source src="assets/screencast.mp4" type="video/mp4">
     Your browser does not support the video tag.
 </video>
 
