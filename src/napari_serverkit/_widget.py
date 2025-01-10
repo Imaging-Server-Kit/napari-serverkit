@@ -24,6 +24,7 @@ from imaging_server_kit.errors import (
     ServerRequestError,
     InvalidAlgorithmParametersError,
     AlgorithmServerError,
+    AlgorithmTimeoutError,
 )
 import webbrowser
 
@@ -156,6 +157,7 @@ class ServerKitWidget(QWidget):
             ServerRequestError,
             InvalidAlgorithmParametersError,
             AlgorithmServerError,
+            AlgorithmTimeoutError,
         ) as e:
             show_error(e.message)
             return []
@@ -184,9 +186,13 @@ class ServerKitWidget(QWidget):
                 self.viewer.add_image(layer_data, **layer_params)
             elif layer_type == "labels":
                 self.viewer.add_labels(layer_data, **layer_params)
+            elif layer_type == "labels3d":
+                self.viewer.add_labels(layer_data, **layer_params)
             elif layer_type == "boxes":
                 self.viewer.add_shapes(layer_data, **layer_params)
             elif layer_type == "points":
+                self.viewer.add_points(layer_data, **layer_params)
+            elif layer_type == "points3d":
                 self.viewer.add_points(layer_data, **layer_params)
             elif layer_type == "vectors":
                 self.viewer.add_vectors(layer_data, **layer_params)
