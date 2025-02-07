@@ -200,6 +200,14 @@ class ServerKitWidget(QWidget):
                 self.viewer.add_vectors(layer_data, **layer_params)
             elif layer_type == "tracks":
                 self.viewer.add_tracks(layer_data, **layer_params)
+            elif layer_type == "class":
+                # Display the class label in the viewer text overlay
+                self.viewer.text_overlay.visible = True
+                self.viewer.text_overlay.text = layer_data
+            elif layer_type == "text":
+                # Display the text in the viewer text overlay
+                self.viewer.text_overlay.visible = True
+                self.viewer.text_overlay.text = layer_data
             else:
                 show_warning(f"Unhandled layer type: {layer_type}")
 
