@@ -67,7 +67,7 @@ class ServerKitWidget(QWidget):
         self.cb_algorithms.currentTextChanged.connect(self._handle_algorithm_changed)
 
         # Sample image
-        self.sample_image_btn = QPushButton("Sample image", self)
+        self.sample_image_btn = QPushButton("Sample image(s)", self)
         self.sample_image_btn.clicked.connect(self._trigger_sample_image_download)
         grid_layout.addWidget(self.sample_image_btn, 2, 0, 1, 3)
 
@@ -185,6 +185,8 @@ class ServerKitWidget(QWidget):
             if layer_type == "image":
                 self.viewer.add_image(layer_data, **layer_params)
             elif layer_type == "labels":
+                self.viewer.add_labels(layer_data, **layer_params)
+            elif layer_type == "instance_mask":
                 self.viewer.add_labels(layer_data, **layer_params)
             elif layer_type == "labels3d":
                 self.viewer.add_labels(layer_data, **layer_params)
