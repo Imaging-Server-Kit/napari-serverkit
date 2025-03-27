@@ -184,11 +184,11 @@ class ServerKitWidget(QWidget):
         for layer_data, layer_params, layer_type in payload:
             if layer_type == "image":
                 self.viewer.add_image(layer_data, **layer_params)
-            elif layer_type == "labels":
+            elif layer_type == "mask":
                 self.viewer.add_labels(layer_data, **layer_params)
             elif layer_type == "instance_mask":
                 self.viewer.add_labels(layer_data, **layer_params)
-            elif layer_type == "labels3d":
+            elif layer_type == "mask3d":
                 self.viewer.add_labels(layer_data, **layer_params)
             elif layer_type == "boxes":
                 self.viewer.add_shapes(layer_data, **layer_params)
@@ -239,7 +239,7 @@ class ServerKitWidget(QWidget):
             if param_widget_type == "image":
                 qt_widget = QComboBox()
                 self.cbs_image.append(qt_widget)  # `subscribe` it to the viewer events
-            elif param_widget_type == "labels":
+            elif param_widget_type == "mask":
                 qt_widget = QComboBox()
                 self.cbs_labels.append(qt_widget)
             elif param_widget_type == "points":
@@ -256,7 +256,11 @@ class ServerKitWidget(QWidget):
                 self.cbs_tracks.append(qt_widget)
             elif param_widget_type == "dropdown":
                 qt_widget = QComboBox()
-                qt_widget.addItems(param_values.get("enum"))
+                # If there is only one element, we get a `const` attribute instead of `enum`
+                if param_values.get("enum") is None:
+                    qt_widget.addItem(param_values.get("const"))
+                else:
+                    qt_widget.addItems(param_values.get("enum"))
             elif param_widget_type == "int":
                 qt_widget = QSpinBox()
                 qt_widget.setMinimum(param_values.get("minimum"))
@@ -292,7 +296,7 @@ class ServerKitWidget(QWidget):
         for param_name, (param_widget_type, qt_widget) in self.dynamic_ui_state.items():
             if param_widget_type in [
                 "image",
-                "labels",
+                "mask",
                 "shapes",
                 "points",
                 "vectors",
