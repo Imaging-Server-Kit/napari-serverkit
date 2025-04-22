@@ -20,7 +20,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt
 import numpy as np
 import imaging_server_kit as serverkit
-from imaging_server_kit.errors import (
+from imaging_server_kit.core import (
     ServerRequestError,
     InvalidAlgorithmParametersError,
     AlgorithmServerError,
