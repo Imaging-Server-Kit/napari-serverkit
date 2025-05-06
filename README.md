@@ -7,9 +7,7 @@ Connect to an [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging
 
 ## Installation
 
-**Executable installer**
-
-Download, unzip, and execute the installer from the [Releases](https://github.com/Imaging-Server-Kit/napari-serverkit/releases) page.
+You can install the plugin either via python *or* the executable installer.
 
 **Python installation**
 
@@ -33,12 +31,16 @@ Then, start Napari with the Server Kit plugin from the terminal:
 napari -w napari-serverkit
 ```
 
+**Executable installer**
+
+Download, unzip, and execute the installer from the [Releases](https://github.com/Imaging-Server-Kit/napari-serverkit/releases) page.
+
 ## Usage
 
-- Make sure you have an [algorithm server](https://github.com/Imaging-Server-Kit/imaging-server-kit) up and running that you can connect to.
-- Enter the `Server URL` (by default, http://localhost:8000) and click `Connect`.
-- A list of algorithms should appear in the `Algorithm` dropdown.
-- The `Parameters` layout should update according to the parameters of the selected algorithm.
+- Make sure to have an [algorithm server](https://github.com/Imaging-Server-Kit/imaging-server-kit) running that you can connect to.
+- Enter the server URL (by default, http://localhost:8000) and click `Connect`.
+- A list of algorithms should appear in the algorithm dropdown.
+- The parameters should update based on the selected algorithm.
 
 ## Contributing
 
