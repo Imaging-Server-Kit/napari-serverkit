@@ -208,6 +208,14 @@ class ServerKitWidget(QWidget):
                 # Display the text in the viewer text overlay
                 self.viewer.text_overlay.visible = True
                 self.viewer.text_overlay.text = layer_data
+            elif layer_type == "notification":
+                notification_level = layer_params.get("level")
+                if notification_level == "error":
+                    show_error(layer_data)
+                elif notification_level == "warning":
+                    show_warning(layer_data)
+                else:
+                    show_info(layer_data)
             else:
                 show_warning(f"Unhandled layer type: {layer_type}")
 
