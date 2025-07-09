@@ -181,6 +181,7 @@ class ServerKitWidget(QWidget):
             return
         
         # Add the right layer into the viewer
+        self.viewer.text_overlay.visible = False
         for layer_data, layer_params, layer_type in payload:
             if layer_type == "image":
                 self.viewer.add_image(layer_data, **layer_params)
@@ -216,6 +217,12 @@ class ServerKitWidget(QWidget):
                     show_warning(layer_data)
                 else:
                     show_info(layer_data)
+            elif layer_type == "scalar":
+                self.viewer.text_overlay.visible = True
+                self.viewer.text_overlay.text = str(layer_data)
+            elif layer_type == "list":
+                self.viewer.text_overlay.visible = True
+                self.viewer.text_overlay.text = str(layer_data)
             else:
                 show_warning(f"Unhandled layer type: {layer_type}")
 
