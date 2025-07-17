@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
+          python-version: "3.11"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -71,7 +71,7 @@ jobs:
       - name: Build executable
         env:
           PYAPP_PROJECT_VERSION: ${{ env.VERSION }}
-          PYAPP_PYTHON_VERSION: '3.9'
+          PYAPP_PYTHON_VERSION: '3.11'
         run: cargo build --release --manifest-path pyapp-latest/Cargo.toml
 
       - name: Archive executable
