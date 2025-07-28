@@ -4,7 +4,7 @@ contributions:
   commands:
     - id: napari-serverkit.run
       title: Connect to algorithm server
-      python_name: napari_serverkit:ServerKitWidget
+      python_name: napari_serverkit:ServerKitRemoteWidget
   widgets:
     - command: napari-serverkit.run
       display_name: Server Kit
