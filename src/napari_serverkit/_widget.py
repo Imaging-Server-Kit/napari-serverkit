@@ -15,7 +15,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QSizePolicy,
     QSpinBox,
     QWidget,
 )
@@ -23,17 +22,72 @@ from qtpy.QtWidgets import (
 from ._worker import WorkerManager
 
 
+def is_algo_layered(layer_type: str):
+    return layer_type in [
+        "image",
+        "mask",
+        "instance_mask",
+        "mask3d",
+        "points",
+        "points3d",
+        "vectors",
+        "boxes",
+    ]
+
+
+def is_algo_arrayed(layer_type: str):
+    return layer_type in [
+        "image",
+        "mask",
+        "instance_mask",
+        "mask3d",
+    ]
+
+
+def is_algo_points(layer_type: str):
+    return layer_type in ["points", "points3d"]
+
+
+def is_algo_mask(layer_type: str):
+    return layer_type in ["mask", "mask3d", "instance_mask"]
+
+
+def is_algo_text(layer_type: str):
+    return layer_type in ["class", "text", "scalar", "list"]
+
+
 class ServerKitAbstractWidget(QWidget):
     def __init__(self, napari_viewer):
         super().__init__()
         self.viewer = napari_viewer
 
-        self.cbs_image = []
-        self.cbs_labels = []
-        self.cbs_points = []
-        self.cbs_shapes = []
-        self.cbs_vectors = []
-        self.cbs_tracks = []
+        self.layer_box_states = {
+            "image": {
+                "cbs": [],
+                "type": napari.layers.Image,
+            },
+            "labels": {
+                "cbs": [],
+                "type": napari.layers.Labels,
+            },
+            "points": {
+                "cbs": [],
+                "type": napari.layers.Points,
+            },
+            "shapes": {
+                "cbs": [],
+                "type": napari.layers.Shapes,
+            },
+            "vectors": {
+                "cbs": [],
+                "type": napari.layers.Vectors,
+            },
+            "tracks": {
+                "cbs": [],
+                "type": napari.layers.Tracks,
+            },
+        }
+
         self.dynamic_ui_state = {}
 
         # Layout
@@ -74,48 +128,16 @@ class ServerKitAbstractWidget(QWidget):
         cancel_btn = self.worker_manager.cancel_btn
         grid_layout.addWidget(cancel_btn, 7, 0, 1, 3)
         self.pbar = self.worker_manager.pbar
-        self.pbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid_layout.addWidget(self.pbar, 8, 0, 1, 3)
 
     def _on_layer_change(self, e):
-        for cb_image in self.cbs_image:
-            cb_image.clear()
-            for x in self.viewer.layers:
-                if isinstance(x, napari.layers.Image):
-                    cb_image.addItem(x.name, x.data)
-
-        for cb_labels in self.cbs_labels:
-            cb_labels.clear()
-            for x in self.viewer.layers:
-                if isinstance(x, napari.layers.Labels):
-                    cb_labels.addItem(x.name, x.data)
-
-        for cb_points in self.cbs_points:
-            cb_points.clear()
-            for x in self.viewer.layers:
-                if isinstance(x, napari.layers.Points):
-                    cb_points.addItem(x.name, x.data)
-
-        for cb_shapes in self.cbs_shapes:
-            cb_shapes.clear()
-            for x in self.viewer.layers:
-                if isinstance(x, napari.layers.Shapes):
-                    cb_shapes.addItem(x.name, x.data)
-
-        for cb_vectors in self.cbs_vectors:
-            cb_vectors.clear()
-            for x in self.viewer.layers:
-                if isinstance(x, napari.layers.Vectors):
-                    cb_vectors.addItem(x.name, x.data)
-
-        for cb_tracks in self.cbs_tracks:
-            cb_tracks.clear()
-            for x in self.viewer.layers:
-                if isinstance(x, napari.layers.Tracks):
-                    cb_tracks.addItem(x.name, x.data)
-
-    def _trigger_run_algorithm(self, **kwargs):
-        raise NotImplementedError("Subclasses should implement this method.")
+        for cbs_values in self.layer_box_states.values():
+            for cb in cbs_values.get("cbs"):
+                cb.clear()
+                for layer in self.viewer.layers:
+                    if isinstance(layer, cbs_values.get("type")):
+                        cb.addItem(layer.name, layer.data)
+                        break
 
     def _thread_returned(self, payload: List):
         if payload is None:
@@ -125,34 +147,35 @@ class ServerKitAbstractWidget(QWidget):
             return
 
         self.viewer.text_overlay.visible = False
+
         for layer_data, layer_params, layer_type in payload:
-            if layer_type in [
-                "image",
-                "mask",
-                "instance_mask",
-                "mask3d",
-                "points",
-                "points3d",
-                "vectors",
-                "boxes",
-            ]:
+            if is_algo_layered(layer_type):
                 self._handle_layered_algo_type(layer_type, layer_data, layer_params)
             else:
-                self._handle_special_algo_type(layer_type, layer_data, layer_params)
+                self._handle_special_algo(layer_type, layer_data, layer_params)
 
-    def _handle_layered_algo_type(self, layer_type, layer_data, layer_params):
-        layer_name = layer_params.pop("name", "Output")
-        tile_params = layer_params.get("tile_params")
-
-        existing_layer = None
+    def _find_existing_layer(self, layer_name):
         for layer in self.viewer.layers:
             if layer.name == layer_name:
-                existing_layer = layer
-                break
+                return layer
+
+    def _handle_layered_algo_type(self, layer_type, layer_data, layer_params):
+        layer_name = layer_params.pop("name")
+        if layer_name is not None:
+            existing_layer = self._find_existing_layer(layer_name)
+        else:
+            print("Algo output doesn't have a layer name!")
+            return  # TODO: should we raise instead?
+
+        tile_params = layer_params.get("tile_params")
+        algo_is_tiled = tile_params is not None
 
         if existing_layer is None:
-            if tile_params:
-                image_layer_data = initialize_tiled_image(tile_params)
+            if algo_is_tiled:
+                if is_algo_arrayed(layer_type):
+                    image_layer_data = initialize_tiled_image(tile_params)
+                else:
+                    image_layer_data = layer_data  # For points, vectors, boxes - this should get filtered out in the next step
                 valid_layer_params = layer_params.copy()
                 valid_layer_params.pop("tile_params")
             else:
@@ -166,50 +189,164 @@ class ServerKitAbstractWidget(QWidget):
                 valid_layer_params,
             )
 
-        if tile_params:
-            if layer_type == "instance_mask":
-                # TODO: implement a good emough merging strategy for instance masks (difficult!)
-                mask = layer_data == 0
-                layer_data += existing_layer.data.max()
-                layer_data[mask] = 0
-
-            chunk_pos_x = tile_params.get("pos_x")
-            chunk_pos_y = tile_params.get("pos_y")
-
-            try:
-                if tile_params.get("pos_z"):  # 3D case
-                    chunk_pos_z = tile_params.get("pos_z")
-                    chunk_size_z, chunk_size_y, chunk_size_x = (
-                        layer_data.shape[0],
-                        layer_data.shape[1],
-                        layer_data.shape[2],
-                    )
-                    existing_layer.data[
-                        chunk_pos_z : (chunk_pos_z + chunk_size_z),
-                        chunk_pos_y : (chunk_pos_y + chunk_size_y),
-                        chunk_pos_x : (chunk_pos_x + chunk_size_x),
-                    ] = layer_data
-                else:  # 2D / RGB cases
-                    chunk_size_x, chunk_size_y = (
-                        layer_data.shape[0],
-                        layer_data.shape[1],
-                    )
-                    existing_layer.data[
-                        chunk_pos_x : (chunk_pos_x + chunk_size_x),
-                        chunk_pos_y : (chunk_pos_y + chunk_size_y),
-                    ] = layer_data
-            except:
-                print("Attempted to write tiles outside of the image.")
-
-            # Update the progress bar
-            self.pbar.setMaximum(tile_params.get("n_tiles"))
-            self.pbar.setValue(tile_params.get("tile_idx"))
+        if algo_is_tiled:
+            self._handle_tiled_algo(layer_type, tile_params, existing_layer, layer_data)
         else:
             existing_layer.data = layer_data
 
-        existing_layer.refresh()
+    def _handle_arrayed_tiled_algo(self, tile_params, existing_layer, layer_data):
+        tile_size = tile_params.get("tile_size_px")
+        tile_pos_z = tile_params.get("pos_z")
+        algo_is_3d = tile_pos_z is not None
+        tile_pos_y = tile_params.get("pos_y")
+        tile_pos_x = tile_params.get("pos_x")
+        max_y = tile_pos_y + tile_size
+        max_x = tile_pos_x + tile_size
+        if algo_is_3d:
+            max_z = tile_pos_z + tile_size
+        try:
+            if algo_is_3d:
+                existing_layer.data[
+                    tile_pos_z:max_z, tile_pos_y:max_y, tile_pos_x:max_x
+                ] = layer_data
+            else:  # 2D / RGB cases
+                existing_layer.data[tile_pos_x:max_x, tile_pos_y:max_y] = layer_data
+        except:
+            print(
+                "Attempted to write tiles outside of the image."
+            )  # TODO: why does this happen?
 
-    def _handle_special_algo_type(self, algo_type, layer_data, layer_params):
+    def _handle_points_tiled_algo(self, tile_params, existing_layer, layer_data):
+        tile_size = tile_params.get("tile_size_px")
+        tile_pos_z = tile_params.get("pos_z")
+        algo_is_3d = tile_pos_z is not None
+        tile_pos_y = tile_params.get("pos_y")
+        tile_pos_x = tile_params.get("pos_x")
+        max_y = tile_pos_y + tile_size
+        max_x = tile_pos_x + tile_size
+        if algo_is_3d:
+            max_z = tile_pos_z + tile_size
+        if len(layer_data):
+            if tile_pos_z:
+                zvals = existing_layer.data[:, 0]
+                yvals = existing_layer.data[:, 1]
+                xvals = existing_layer.data[:, 2]
+                filt = (
+                    (tile_pos_x <= xvals)
+                    & (xvals < max_x)
+                    & (tile_pos_y <= yvals)
+                    & (yvals < max_y)
+                    & (tile_pos_z <= zvals)
+                    & (zvals < max_z)
+                )
+                layer_data[:, 0] += tile_pos_z
+                layer_data[:, 1] += tile_pos_y
+                layer_data[:, 2] += tile_pos_x
+            else:
+                xvals = existing_layer.data[:, 0]
+                yvals = existing_layer.data[:, 1]
+                filt = (
+                    (tile_pos_x <= xvals)
+                    & (xvals < max_x)
+                    & (tile_pos_y <= yvals)
+                    & (yvals < max_y)
+                )
+                layer_data[:, 0] += tile_pos_x
+                layer_data[:, 1] += tile_pos_y
+
+            existing_layer.data = np.vstack((existing_layer.data[~filt], layer_data))
+
+    def _handle_vectors_tiled_algo(self, tile_params, existing_layer, layer_data):
+        tile_size = tile_params.get("tile_size_px")
+        tile_pos_z = tile_params.get("pos_z")
+        algo_is_3d = tile_pos_z is not None
+        tile_pos_y = tile_params.get("pos_y")
+        tile_pos_x = tile_params.get("pos_x")
+        max_y = tile_pos_y + tile_size
+        max_x = tile_pos_x + tile_size
+        if algo_is_3d:
+            max_z = tile_pos_z + tile_size
+        if len(layer_data):
+            if tile_pos_z:
+                # TODO: test this
+                zvals = existing_layer.data[:, 0, 0][..., np.newaxis]
+                yvals = existing_layer.data[:, 0, 1][..., np.newaxis]
+                xvals = existing_layer.data[:, 0, 2][..., np.newaxis]
+                filt = (
+                    (tile_pos_x <= xvals)
+                    & (xvals < max_x)
+                    & (tile_pos_y <= yvals)
+                    & (yvals < max_y)
+                    & (tile_pos_z <= zvals)
+                    & (zvals < max_z)
+                )
+                layer_data[:, 0, 0] += tile_pos_z
+                layer_data[:, 0, 1] += tile_pos_y
+                layer_data[:, 0, 2] += tile_pos_x
+            else:
+                xvals = existing_layer.data[:, 0, 0][..., np.newaxis]
+                yvals = existing_layer.data[:, 0, 1][..., np.newaxis]
+                filt = (
+                    (tile_pos_x <= xvals)
+                    & (xvals < max_x)
+                    & (tile_pos_y <= yvals)
+                    & (yvals < max_y)
+                )
+                layer_data[:, 0, 0] += tile_pos_x
+                layer_data[:, 0, 1] += tile_pos_y
+
+            filt = np.all(filt, axis=1)
+
+            existing_layer.data = np.vstack((existing_layer.data[~filt], layer_data))
+
+    def _handle_boxes_tiled_algo(self, tile_params, existing_layer, layer_data):
+        tile_size = tile_params.get("tile_size_px")
+        tile_pos_z = tile_params.get("pos_z")
+        algo_is_3d = tile_pos_z is not None
+        tile_pos_y = tile_params.get("pos_y")
+        tile_pos_x = tile_params.get("pos_x")
+        max_y = tile_pos_y + tile_size
+        max_x = tile_pos_x + tile_size
+        if algo_is_3d:
+            max_z = tile_pos_z + tile_size
+        if len(layer_data):
+            if tile_pos_z:
+                raise NotImplementedError("3D boxes are not supported.")
+
+            xvals = np.asarray(existing_layer.data)[:, :, 0]
+            yvals = np.asarray(existing_layer.data)[:, :, 1]
+            filt = (
+                (tile_pos_x <= xvals)
+                & (xvals < max_x)
+                & (tile_pos_y <= yvals)
+                & (yvals < max_y)
+            )
+            layer_data[:, :, 0] += tile_pos_x
+            layer_data[:, :, 1] += tile_pos_y
+
+            filt = np.all(filt, axis=1)
+
+            existing_layer.data = np.vstack(
+                (np.asarray(existing_layer.data)[~filt], layer_data)
+            )
+
+    def _handle_tiled_algo(self, layer_type, tile_params, existing_layer, layer_data):
+        if is_algo_arrayed(layer_type):
+            self._handle_arrayed_tiled_algo(tile_params, existing_layer, layer_data)
+        elif is_algo_points(layer_type):
+            self._handle_points_tiled_algo(tile_params, existing_layer, layer_data)
+        elif layer_type == "vectors":
+            self._handle_vectors_tiled_algo(tile_params, existing_layer, layer_data)
+        elif layer_type == "boxes":
+            self._handle_boxes_tiled_algo(tile_params, existing_layer, layer_data)
+        else:
+            print(f"{layer_type} not implemented in tiled mode.")
+
+        # Update the progress bar (TODO: weird to do it here..)
+        self.pbar.setMaximum(tile_params.get("n_tiles"))
+        self.pbar.setValue(tile_params.get("tile_idx"))
+
+    def _handle_special_algo(self, algo_type, layer_data, layer_params):
         if algo_type == "notification":
             notification_level = layer_params.get("level")
             if notification_level == "error":
@@ -218,18 +355,7 @@ class ServerKitAbstractWidget(QWidget):
                 show_warning(layer_data)
             else:
                 show_info(layer_data)
-        elif algo_type == "class":
-            # Display the class label in the viewer text overlay
-            self.viewer.text_overlay.visible = True
-            self.viewer.text_overlay.text = layer_data
-        elif algo_type == "text":
-            # Display the text in the viewer text overlay
-            self.viewer.text_overlay.visible = True
-            self.viewer.text_overlay.text = layer_data
-        elif algo_type == "scalar":
-            self.viewer.text_overlay.visible = True
-            self.viewer.text_overlay.text = str(layer_data)
-        elif algo_type == "list":
+        elif is_algo_text(algo_type):
             self.viewer.text_overlay.visible = True
             self.viewer.text_overlay.text = str(layer_data)
         else:
@@ -251,24 +377,10 @@ class ServerKitAbstractWidget(QWidget):
 
             # Add the right UI element based on the retreived "widget type" spec.
             param_widget_type = param_values.get("widget_type")
-            if param_widget_type == "image":
+
+            if param_widget_type in list(self.layer_box_states.keys()):
                 qt_widget = QComboBox()
-                self.cbs_image.append(qt_widget)  # `subscribe` it to the viewer events
-            elif param_widget_type == "mask":
-                qt_widget = QComboBox()
-                self.cbs_labels.append(qt_widget)
-            elif param_widget_type == "points":
-                qt_widget = QComboBox()
-                self.cbs_points.append(qt_widget)
-            elif param_widget_type == "shapes":
-                qt_widget = QComboBox()
-                self.cbs_shapes.append(qt_widget)
-            elif param_widget_type == "vectors":
-                qt_widget = QComboBox()
-                self.cbs_vectors.append(qt_widget)
-            elif param_widget_type == "tracks":
-                qt_widget = QComboBox()
-                self.cbs_tracks.append(qt_widget)
+                self.layer_box_states[param_widget_type].get("cbs").append(qt_widget)
             elif param_widget_type == "dropdown":
                 qt_widget = QComboBox()
                 # If there is only one element, we get a `const` attribute instead of `enum`
@@ -318,7 +430,7 @@ class ServerKitAbstractWidget(QWidget):
             added_layer = self.viewer.add_image(
                 layer_data, name=layer_name, **layer_params
             )
-        elif layer_type in ["mask", "mask3d", "instance_mask"]:
+        elif is_algo_mask(layer_type):
             added_layer = self.viewer.add_labels(
                 layer_data, name=layer_name, **layer_params
             )
@@ -326,7 +438,7 @@ class ServerKitAbstractWidget(QWidget):
             added_layer = self.viewer.add_shapes(
                 layer_data, name=layer_name, **layer_params
             )
-        elif layer_type in ["points", "points3d"]:
+        elif is_algo_points(layer_type):
             added_layer = self.viewer.add_points(
                 layer_data, name=layer_name, **layer_params
             )
@@ -340,7 +452,7 @@ class ServerKitAbstractWidget(QWidget):
             )
         return added_layer
 
-    def algo_params_from_dynamic_ui(self) -> Dict:
+    def _algo_params_from_dynamic_ui(self) -> Dict:
         # Returns a Json dict representation of the parameter values
         algo_params = {}
         for param_name, (param_widget_type, qt_widget) in self.dynamic_ui_state.items():
@@ -352,10 +464,8 @@ class ServerKitAbstractWidget(QWidget):
                 "vectors",
                 "tracks",
             ]:
-                if qt_widget.currentText() == "":
-                    param_value = np.array([])
-                else:
-                    param_value = np.array(
+                if qt_widget.currentText():
+                    param_value = np.asarray(
                         self.viewer.layers[qt_widget.currentText()].data
                     )
             elif param_widget_type == "dropdown":
@@ -374,6 +484,18 @@ class ServerKitAbstractWidget(QWidget):
             algo_params[param_name] = param_value
 
         return algo_params
+
+    def _manage_cbs_events(self, worker):
+        for cbs_values in self.layer_box_states.values():
+            for cb in cbs_values.get("cbs"):
+                worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
+
+    def _download_samples_returned(self, images):
+        for image in images:
+            self.viewer.add_image(image)
+
+    def _trigger_run_algorithm(self, **kwargs):
+        raise NotImplementedError("Subclasses should implement this method.")
 
     def _trigger_sample_image_download(self, **kwargs):
         raise NotImplementedError("Subclasses should implement this method.")

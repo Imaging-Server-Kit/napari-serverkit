@@ -1,9 +1,26 @@
 ![EPFL Center for Imaging logo](https://imaging.epfl.ch/resources/logo-for-gitlab.svg)
 # 🪐 Napari Server Kit
 
-Connect to an [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) server and run algorithms in [Napari](https://napari.org/stable/).
+Connect to [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) servers and run algorithms in [Napari](https://napari.org/stable/).
 
 [napari_screencast.webm](https://github.com/user-attachments/assets/4c1e3e0d-0623-4fe4-a9dd-c9d1e5e68844)
+
+## Features
+
+- Generate **dock widgets** from `@algorithm_server` definitions
+
+- Custom interactions and compatibility with all [algo types]()
+
+- Compatible with single and multi-algorithm servers
+
+- Layer features and other layer parameters
+- Link to download sample images and to the algo documentation
+- Enable `auto_call` on individual algorithm parameters
+- Process streams, including tiled image processing
+- One-click installation via PyApp executables
+
+- Multithreading processing (cancellable)
+- Clean error handling and notifications
 
 ## Installation
 
@@ -35,12 +52,45 @@ napari -w napari-serverkit
 
 Download, unzip, and execute the installer from the [Releases](https://github.com/Imaging-Server-Kit/napari-serverkit/releases) page.
 
-## Usage
+## Usage (TODO: complete this section)
+
+**As a web client to interact with algorithm servers:**
 
 - Make sure to have an [algorithm server](https://github.com/Imaging-Server-Kit/imaging-server-kit) running that you can connect to.
 - Enter the server URL (by default, http://localhost:8000) and click `Connect`.
 - A list of algorithms should appear in the algorithm dropdown.
 - The parameters should update based on the selected algorithm.
+
+**As a widget constructor:**
+
+You can also use `napari-serverkit` to automatically construct dock widgets from algorithm servers *without* running them as servers. In this case, Napari and your algorithm server are installed in the same Python environment.
+
+Use cases:
+- Applications where the data transfer between server/client is an unnecessary bottleneck or adds unnecessary overhead
+- To easily test algorithm server functionalities
+- In other Napari plugins
+
+For example:
+
+```python
+from imaging_server_kit import algorithm_server
+from napari_serverkit import ServerKitLocalWidget
+
+@algorithm_server(
+    ...
+)
+def my_segmentation_algo(image, ...):
+    ...
+    return [(result, {}, "mask")]
+
+if __name__=='__main__':
+    viewer = napari.Viewer()
+    widget = ServerKitLocalWidget(viewer, server=my_segmentation_algo)
+    viewer.window.add_dock_widget(widget)
+    napari.run()
+```
+
+For more details, see the [examples]().
 
 ## Contributing
 

@@ -48,27 +48,16 @@ class AlgorithmWidget(ServerKitAbstractWidget):
             return []
 
     def _trigger_run_algorithm(self, **kwargs):
-        algo_is_stream = self.server.is_stream
+        algo_is_stream = self.server._is_stream
 
-        algo_params = self.algo_params_from_dynamic_ui()
+        algo_params = self._algo_params_from_dynamic_ui()
+
         worker = self._run_algorithm(algo_is_stream, **algo_params)
         worker.returned.connect(self._thread_returned)
         if algo_is_stream:
             worker.yielded.connect(self._thread_returned)
 
-        # Slightly hacky: make sure the combobox current selections stay the same on algo run
-        for cb in self.cbs_image:
-            worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
-        for cb in self.cbs_labels:
-            worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
-        for cb in self.cbs_points:
-            worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
-        for cb in self.cbs_shapes:
-            worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
-        for cb in self.cbs_vectors:
-            worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
-        for cb in self.cbs_tracks:
-            worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))
+        self._manage_cbs_events(worker)
 
         self.worker_manager.add_active(worker)
 
@@ -80,7 +69,3 @@ class AlgorithmWidget(ServerKitAbstractWidget):
         worker = self._download_worker()
         worker.returned.connect(self._download_samples_returned)
         self.worker_manager.add_active(worker)
-
-    def _download_samples_returned(self, images):
-        for image in images:
-            self.viewer.add_image(image)

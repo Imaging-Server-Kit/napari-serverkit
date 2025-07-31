@@ -23,6 +23,7 @@ dependencies = [
     "napari[all]>=0.4.16",
     "qtpy",
     "imaging-server-kit",
+    "napari-toolkit",
 ]
 
 [project.entry-points."napari.manifest"]
