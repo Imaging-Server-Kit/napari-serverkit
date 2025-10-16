@@ -186,4 +186,4 @@ class NapariResults(LayerStackBase):
         self.viewer.layers.events.inserted.connect(func)
 
     def connect_layer_removed_event(self, func: Callable):
-        self.viewer.layers.events.removed.connect(func)
+        self.viewer.layers.events.removed.connect(func)                         

@@ -24,10 +24,7 @@ class ParameterPanel:
         self.napari_results = napari_results
 
         self.ui_state = {}
-
-        self.layer_comboboxes = {
-            # array_type: [] for array_type in list(DATA_TYPES.keys())
-        }
+        self.layer_comboboxes = {}
 
         self.widget = QGroupBox()
         self.widget.setTitle("Parameters")
@@ -110,8 +107,6 @@ class ParameterPanel:
 
     def _on_layer_change(self, *args, **kwargs):
         for kind, cb_list in self.layer_comboboxes.items():
-            # layer_type = self.napari_results.layer_types.get(kind)
-            # if layer_type in supported_napari_layers:
             layer_type = NAPARI_LAYER_MAPPINGS[kind]
             for cb in cb_list:
                 cb.clear()
@@ -151,10 +146,5 @@ class ParameterPanel:
     def manage_cbs_events(self, worker):
         """Whenever a worker returns, we update the napari layer comboboxes to their current index (instead of resetting it)"""
         for kind, cb_list in self.layer_comboboxes.items():
-            # kind: image, mask...
-            # if kind in ["image", "mask" ...]
-            # layer_type = self.napari_results.layer_types.get(kind)  # Napari layer type
-            # viewer.Image, viewer.Mask...
-            # if layer_type in supported_napari_layers:
             for cb in cb_list:
                 worker.returned.connect(lambda _: cb.setCurrentIndex(cb.currentIndex()))

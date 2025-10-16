@@ -16,7 +16,7 @@ from napari_serverkit.widgets.runner_widget import RunnerWidget
 
 class HttpRunnerWidget(RunnerWidget):
     def __init__(self):
-        super().__init__(server=None)
+        super().__init__(algorithm=None)
 
         default_url = "http://localhost:8000"
         self.runner = sk.Client()
@@ -37,7 +37,7 @@ class HttpRunnerWidget(RunnerWidget):
         layout.addWidget(self.connect_btn, 0, 2)
 
         # Add the base runner widget
-        layout.addWidget(self._widget, 1, 0, 1, 3)        
+        layout.addWidget(self._widget, 1, 0, 1, 3)
 
     @property
     def widget(self) -> QWidget:

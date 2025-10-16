@@ -1,4 +1,5 @@
 from functools import partial
+from typing import Dict
 import napari
 from napari.utils.notifications import show_info, show_warning
 from qtpy.QtCore import Qt
@@ -9,7 +10,7 @@ from imaging_server_kit.core.errors import (
     ServerRequestError,
 )
 
-from napari_serverkit.widgets.parameter_panel import ParameterPanel
+from napari_serverkit.widgets.parameter_panel import ParameterPanel, NAPARI_LAYER_MAPPINGS
 from napari_serverkit.widgets.task_manager import TaskManager
 from napari_serverkit.widgets.napari_results import NapariResults
 from napari_serverkit.widgets.runner_widget import RunnerWidget
@@ -18,7 +19,7 @@ from napari_serverkit.widgets.runner_widget import RunnerWidget
 class ServerKitWidget(QWidget):
     def __init__(self, viewer: napari.Viewer, runner_widget: RunnerWidget):
         super().__init__()
-        self.sk_viewer = NapariResults(viewer)
+        self.napari_results = NapariResults(viewer)
         self.runner_widget = runner_widget
 
         # Layout
@@ -32,12 +33,13 @@ class ServerKitWidget(QWidget):
         # Connect the ComboBox change from the runner to the UI update
         self.runner_widget.update_params_trigger.connect(self._algorithm_changed)
 
-        self.runner_widget.sample_image_btn.clicked.connect(self._download_samples)
+        # Connect the samples loading event
+        self.runner_widget.samples_select_btn.clicked.connect(self._sample_triggered)
 
         # Algorithm parameters (dynamic UI)
         self.params_panel = ParameterPanel(
             trigger=self._run,  # gets linked to auto_call
-            napari_results=self.sk_viewer,  # layer change events update the cbs
+            napari_results=self.napari_results,  # layer change events update the cbs
         )
         layout.addWidget(self.params_panel.widget)
 
@@ -67,8 +69,11 @@ class ServerKitWidget(QWidget):
         if selected_algo == "":
             return
         try:
+            # Update the parameters panel
             schema = self.runner_widget.get_algorithm_parameters()
             self.params_panel.update(schema)
+            # Update the number of samples available
+            self.runner_widget.update_n_samples()
         except (AlgorithmServerError, ServerRequestError) as e:
             show_warning(e.message)
 
@@ -82,16 +87,49 @@ class ServerKitWidget(QWidget):
 
         if task:
             return_func = partial(
-                self.sk_viewer.merge,
+                self.napari_results.merge,
                 tiles_callback=self._update_pbar_on_tiled,
             )
             self.tasks.add_active(task=task, return_func=return_func)
 
-    def _download_samples(self):
-        self.tasks.add_active(
-            task=self.runner_widget._download_samples_from_btn,
-            return_func=self.sk_viewer.samples_emitted,
+    def _sample_triggered(self):
+        idx = self.runner_widget.samples_select.currentText()
+        if idx == "":
+            return
+        idx = int(idx)
+        download_sample_func = partial(
+            self.runner_widget._download_sample,
+            idx=idx,
         )
+        self.tasks.add_active(
+            task=download_sample_func,
+            return_func=self._sample_emitted,
+        )
+
+    def _sample_emitted(self, sample_params: Dict):
+        sk_params = self.runner_widget._resolve_sk_params(sample_params)
+        for param_name, skp in sk_params.items():
+            kind = skp.kind
+            data = skp.data
+            name = skp.name
+            meta = skp.meta
+            if kind in list(NAPARI_LAYER_MAPPINGS.keys()):
+                self.napari_results.create(kind=kind, data=data, name=name, meta=meta)
+            else:
+                # Set values in the parameters UI
+                param_type, widget = self.params_panel.ui_state.get(param_name)
+                if param_type == "dropdown":
+                    widget.setCurrentText(data)
+                elif param_type == "int":
+                    widget.setValue(data)
+                elif param_type == "float":
+                    widget.setValue(data)
+                elif param_type == "bool":
+                    widget.setChecked(data)
+                elif param_type == "str":
+                    widget.setText(data)
+                elif param_type == "notification":
+                    widget.setText(data)
 
     def _cancel(self):
         show_info("Cancelling...")

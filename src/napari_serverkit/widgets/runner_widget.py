@@ -1,18 +1,19 @@
 from functools import partial
-from typing import Callable, Dict, Iterable
+from typing import Any, Callable, Dict
+
+from imaging_server_kit.core._etc import resolve_params
+from imaging_server_kit.core.algorithm import Algorithm
+from imaging_server_kit.types import DATA_TYPES, DataLayer
 from napari.utils.notifications import show_warning
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
-from imaging_server_kit.core.algorithm import Algorithm
-
-import numpy as np
 from qtpy.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGridLayout,
     QLabel,
     QPushButton,
-    QComboBox,
-    QCheckBox,
-    QGridLayout,
     QSpinBox,
-    QDoubleSpinBox,
     QWidget,
 )
 
@@ -23,12 +24,13 @@ def require_algorithm(func):
             raise Exception("Algoritm selection required")
         else:
             return func(self, *args, **kwargs)
+
     return wrapper
 
 
 class RunnerWidget:
-    def __init__(self, server: Algorithm):
-        self.runner = server
+    def __init__(self, algorithm: Algorithm):
+        self.runner = algorithm
 
         # Layout and widget
         self._widget = QWidget()
@@ -39,22 +41,26 @@ class RunnerWidget:
         # Algorithms
         self.cb_algorithms = QComboBox()
         layout.addWidget(QLabel("Algorithm"), 1, 0)
-        layout.addWidget(self.cb_algorithms, 1, 1, 1, 2)
+        layout.addWidget(self.cb_algorithms, 1, 1)
 
-        # Sample image
-        self.sample_image_btn = QPushButton("Sample image(s)")
-        layout.addWidget(self.sample_image_btn, 2, 0, 1, 3)
-
-        # Algo info
-        self.algo_info_btn = QPushButton("🌐 Documentation")
+        # Info link
+        self.algo_info_btn = QPushButton("🌐 Doc")
         self.algo_info_btn.clicked.connect(self._open_info_link_from_btn)
-        layout.addWidget(self.algo_info_btn, 3, 0, 1, 3)
+        layout.addWidget(self.algo_info_btn, 1, 2)
+
+        # Samples
+        self.samples_select = QComboBox()
+        self.samples_select_btn = QPushButton("Load")
+        self.samples_select_label = QLabel("Samples (0)")
+        layout.addWidget(self.samples_select_label, 2, 0)
+        layout.addWidget(self.samples_select, 2, 1)
+        layout.addWidget(self.samples_select_btn, 2, 2)
 
         # (Experimental) run in tiles
         experimental_gb = QCollapsibleGroupBox("Experimental")
         experimental_gb.setChecked(False)
         experimental_layout = QGridLayout(experimental_gb)
-        layout.addWidget(experimental_gb, 4, 0, 1, 3)
+        layout.addWidget(experimental_gb, 3, 0, 1, 3)
 
         experimental_layout.addWidget(QLabel("Run in tiles"), 0, 0)
         self.cb_run_in_tiles = QCheckBox()
@@ -103,13 +109,14 @@ class RunnerWidget:
     def update_params_trigger(self) -> Callable:
         return self.cb_algorithms.currentTextChanged
 
-    @require_algorithm
-    def _download_samples_from_btn(self, *args, **kwargs) -> Iterable[np.ndarray]:
+    def _download_sample(self, *args, **kwargs) -> Dict[str, Any]:
         try:
-            return self.runner.get_sample_images(self.cb_algorithms.currentText())
+            return self.runner.get_sample(
+                self.cb_algorithms.currentText(), *args, **kwargs
+            )
         except:
-            show_warning("Failed to download sample images.")
-            return []
+            show_warning("Failed to download sample.")
+            return {}
 
     @require_algorithm
     def _get_run_func(self, algo_params: Dict) -> Callable:
@@ -133,13 +140,13 @@ class RunnerWidget:
             if stream:
                 return partial(
                     self.runner._stream,
-                    algorithm=algorithm, 
+                    algorithm=algorithm,
                     **algo_params,
                 )
             else:
                 return partial(
                     self.runner._run,
-                    algorithm=algorithm, 
+                    algorithm=algorithm,
                     **algo_params,
                 )
 
@@ -151,6 +158,13 @@ class RunnerWidget:
     def get_algorithm_parameters(self):
         return self.runner.get_parameters(self.cb_algorithms.currentText())
 
+    @require_algorithm
+    def update_n_samples(self):
+        n_samples_avail = self.runner.get_n_samples(self.cb_algorithms.currentText())
+        self.samples_select.clear()
+        self.samples_select.addItems([f"{k}" for k in range(n_samples_avail)])
+        self.samples_select_label.setText(f"Samples ({n_samples_avail})")
+
     def _run_in_tiles_changed(self, run_in_tiles: bool):
         for ui_element in [
             self.qds_tile_size,
@@ -160,4 +174,14 @@ class RunnerWidget:
         ]:
             ui_element.setEnabled(run_in_tiles)
 
-        
+    def _resolve_sk_params(self, sample_params: Dict[str, Any]) -> Dict[str, DataLayer]:
+        """Resolve a full set of parameters, with semantics, from sample parameters."""
+        algorithm_name = self.cb_algorithms.currentText()
+        algo_params_defs = self.runner.get_parameters(algorithm_name).get("properties")
+        sk_params = {}
+        for param_name, param_value in sample_params.items():
+            for param_name_, param_props in algo_params_defs.items():
+                if param_name == param_name_:
+                    kind = param_props.get("param_type")
+                    sk_params[param_name] = DATA_TYPES.get(kind)(data=param_value)
+        return sk_params
