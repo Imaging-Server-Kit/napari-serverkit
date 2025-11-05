@@ -1,15 +1,32 @@
 """
-Implements the Results interface for Napari's viewer.
+Implements the LayerStackBase interface for Napari's viewer.
 """
 
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 import numpy as np
 
 import napari
 import napari.layers
 from napari.utils.notifications import show_error, show_info, show_warning
 
-from imaging_server_kit.core.results import Results, LayerStackBase
+from imaging_server_kit.core.results import Results, LayerStackBase, DataLayer
+
+
+def _set_layer_attributes_from_meta(meta: Dict, layer: DataLayer):
+    # Set the features first
+    if "features" in meta:
+        value = meta["features"]
+        try:
+            setattr(layer, "features", value)
+        except:
+            print("Could not set layer features.")
+    
+    for key, value in meta.items():
+        if key not in ["tile_params", "name", "features", "ndim"]:
+            try:
+                setattr(layer, key, value)
+            except:
+                print("Could not set this layer property: ", key)
 
 
 def create(viewer, layer) -> None:
@@ -18,52 +35,39 @@ def create(viewer, layer) -> None:
     name = layer.name
     meta = layer.meta
 
-    # Sanitize meta
-    valid_meta = meta.copy()
-    if "tile_params" in valid_meta:
-        valid_meta.pop("tile_params")
-    else:
-        valid_meta = meta
-
     if kind == "image":
-        viewer.add_image(data, name=name, **valid_meta)
+        layer = viewer.add_image(data, name=name)
     elif kind in ["mask", "instance_mask"]:
-        viewer.add_labels(data.astype(np.uint16), name=name, **valid_meta)
+        layer = viewer.add_labels(data.astype(np.uint16), name=name)
     elif kind == "points":
-        viewer.add_points(data, name=name, **valid_meta)
+        layer = viewer.add_points(data, name=name)
     elif kind in ["boxes", "paths"]:
         if "shape_type" in meta:  # Make sure it isn't used twice
             meta.pop("shape_type")
         if kind == "boxes":
-            viewer.add_shapes(data, name=name, shape_type="rectangle", **valid_meta)
+            layer = viewer.add_shapes(data, name=name, shape_type="rectangle")
         elif kind == "paths":
-            viewer.add_shapes(data, name=name, shape_type="path", **valid_meta)
+            layer = viewer.add_shapes(data, name=name, shape_type="path")
     elif kind == "vectors":
-        viewer.add_vectors(data, name=name, **valid_meta)
+        layer = viewer.add_vectors(data, name=name)
     elif kind == "tracks":
-        viewer.add_tracks(data, name=name, **valid_meta)
+        layer = viewer.add_tracks(data, name=name)
+
+    _set_layer_attributes_from_meta(meta, layer)
+
+    layer.refresh()
 
 
-def update(viewer, layer) -> None:
-    # Napari layers
-    if layer.kind in [
-        "image",
-        "mask",
-        "instance_mask",
-        "points",
-        "boxes",
-        "paths",
-        "vectors",
-        "tracks",
-    ]:
-        for l in viewer.layers:
-            if l.name == layer.name:
-                l.data = layer.data
-                l.refresh()
+def _napari_layer_update(viewer, layer):
+    for l in viewer.layers:
+        if l.name == layer.name:
+            l.data = layer.data
+            _set_layer_attributes_from_meta(layer.meta, l)
+            l.refresh()
 
-    # Notifications
-    elif layer.kind == "notification":
-        # if isinstance(layer, sk.Notification):
+
+def _notification_update(viewer, layer):
+    if layer.data is not None:
         level = layer.meta.get("level", "info")
         if level == "error":
             show_error(layer.data)
@@ -72,10 +76,33 @@ def update(viewer, layer) -> None:
         else:
             show_info(layer.data)
 
-    # Text shown in the viewer
-    elif layer.kind in ["float", "int", "bool", "str", "dropdown"]:
-        viewer.text_overlay.visible = True
-        viewer.text_overlay.text = str(layer.data)
+
+def _textlayer_update(viewer, layer):
+    viewer.text_overlay.visible = True
+    viewer.text_overlay.text = str(layer.data)
+
+
+def update(viewer, layer) -> None:
+    """Based on the kind of layer, execute the right update function."""
+    update_hooks = {
+        "image": _napari_layer_update,
+        "mask": _napari_layer_update,
+        "instance_mask": _napari_layer_update,
+        "points": _napari_layer_update,
+        "boxes": _napari_layer_update,
+        "paths": _napari_layer_update,
+        "vectors": _napari_layer_update,
+        "tracks": _napari_layer_update,
+        "notification": _notification_update,
+        "float": _textlayer_update,
+        "int": _textlayer_update,
+        "bool": _textlayer_update,
+        "str": _textlayer_update,
+        "choice": _textlayer_update,
+    }
+    update_func: Optional[Callable] = update_hooks.get(layer.kind)
+    if update_func is not None:
+        update_func(viewer, layer)
 
 
 def read(viewer, layer) -> None:
@@ -90,19 +117,31 @@ def delete(viewer, layer_name) -> None:
 
 
 def napari_layer_to_results_layer(napari_layer, results: Results):
+    # layer_to_kind = {}  # TODO: better approach...
     if isinstance(napari_layer, napari.layers.Image):
-        results.create(kind="image", data=napari_layer.data, name=napari_layer.name)
+        kind = "image"
     elif isinstance(napari_layer, napari.layers.Labels):
-        results.create(kind="mask", data=napari_layer.data, name=napari_layer.name)
+        kind = "mask"
     elif isinstance(napari_layer, napari.layers.Points):
-        results.create(kind="points", data=napari_layer.data, name=napari_layer.name)
+        kind = "points"
     elif isinstance(napari_layer, napari.layers.Tracks):
-        results.create(kind="tracks", data=napari_layer.data, name=napari_layer.name)
+        kind = "tracks"
     elif isinstance(napari_layer, napari.layers.Vectors):
-        results.create(kind="vectors", data=napari_layer.data, name=napari_layer.name)
+        kind = "vectors"
     elif isinstance(napari_layer, napari.layers.Shapes):
-        # TODO: handle this special case cleanly
-        pass
+        if napari_layer.shape_type == "rectangle":
+            kind = "boxes"
+        elif napari_layer.shape_type == "path":
+            kind = "paths"
+        else:
+            print("Could not convert this layer: ", napari_layer)
+            return results
+    else:
+        print("Could not convert this layer: ", napari_layer)
+        return results
+
+    results.create(kind=kind, data=napari_layer.data, name=napari_layer.name)
+
     return results
 
 
@@ -159,7 +198,7 @@ class NapariResults(LayerStackBase):
         return self.results.layers[idx]
 
     def create(self, kind, data, name=None, meta=None):
-        layer = self.results.create(kind=kind, data=data, name=name, meta=meta)
+        layer = self.results.create(kind, data, name, meta) # type: ignore
         create(self.viewer, layer)
         return layer
 
@@ -168,8 +207,8 @@ class NapariResults(LayerStackBase):
         read(self.viewer, layer)
         return layer
 
-    def update(self, layer_name, layer_data: np.ndarray):
-        layer = self.results.update(layer_name, layer_data)
+    def update(self, layer_name, layer_data: np.ndarray, layer_meta: Dict):
+        layer = self.results.update(layer_name, layer_data, layer_meta)
         update(self.viewer, layer)
         return layer
 
@@ -186,4 +225,7 @@ class NapariResults(LayerStackBase):
         self.viewer.layers.events.inserted.connect(func)
 
     def connect_layer_removed_event(self, func: Callable):
-        self.viewer.layers.events.removed.connect(func)                         
+        self.viewer.layers.events.removed.connect(func)
+    
+    def get_pixel_domain(self) -> np.ndarray:
+        return self.results.get_pixel_domain()

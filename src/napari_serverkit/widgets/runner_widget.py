@@ -1,9 +1,8 @@
 from functools import partial
-from typing import Any, Callable, Dict
+from typing import Callable, Dict, Optional
 
-from imaging_server_kit.core._etc import resolve_params
+from imaging_server_kit.core.results import DataLayer, Results
 from imaging_server_kit.core.algorithm import Algorithm
-from imaging_server_kit.types import DATA_TYPES, DataLayer
 from napari.utils.notifications import show_warning
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
@@ -29,8 +28,8 @@ def require_algorithm(func):
 
 
 class RunnerWidget:
-    def __init__(self, algorithm: Algorithm):
-        self.runner = algorithm
+    def __init__(self, algorithm: Optional[Algorithm]):
+        self.algorithm = algorithm
 
         # Layout and widget
         self._widget = QWidget()
@@ -57,7 +56,7 @@ class RunnerWidget:
         layout.addWidget(self.samples_select_btn, 2, 2)
 
         # (Experimental) run in tiles
-        experimental_gb = QCollapsibleGroupBox("Experimental")
+        experimental_gb = QCollapsibleGroupBox("Tiled inference") # type: ignore
         experimental_gb.setChecked(False)
         experimental_layout = QGridLayout(experimental_gb)
         layout.addWidget(experimental_gb, 3, 0, 1, 3)
@@ -107,60 +106,72 @@ class RunnerWidget:
 
     @property
     def update_params_trigger(self) -> Callable:
-        return self.cb_algorithms.currentTextChanged
+        return self.cb_algorithms.currentTextChanged # type: ignore
 
-    def _download_sample(self, *args, **kwargs) -> Dict[str, Any]:
+    @require_algorithm
+    def _download_sample(self, *args, **kwargs) -> Results:
         try:
-            return self.runner.get_sample(
+            sample = self.algorithm.get_sample( # type: ignore
                 self.cb_algorithms.currentText(), *args, **kwargs
             )
         except:
             show_warning("Failed to download sample.")
-            return {}
+        if sample is not None:
+            return sample
+        return Results()
 
     @require_algorithm
-    def _get_run_func(self, algo_params: Dict) -> Callable:
-        algorithm = self.cb_algorithms.currentText()
+    def _get_run_func(self, algo_params: Results) -> Optional[Callable]:
+        algorithm: str = self.cb_algorithms.currentText()
         tiled = self.cb_run_in_tiles.isChecked()
-        stream = self.runner._is_stream(algorithm)
+        is_stream = self.algorithm._is_stream(algorithm) # type: ignore
+
+        # Handle the RGB case (suboptimal)
+        algo_param_defs: Dict = self.algorithm.get_parameters(algorithm)["properties"] # type: ignore
+        for param_name, param_value in algo_param_defs.items():
+            layer: Optional[DataLayer] = algo_params.read(param_name)
+            if layer is not None:
+                if layer.kind == "image":
+                    layer.rgb = param_value.get("rgb") # type: ignore
+
         if tiled:
-            if stream:
+            if is_stream:
                 show_warning("Cannot run streamed algorithm in tiling mode!")
                 return
             return partial(
-                self.runner._tile,
+                self.algorithm._tile, # type: ignore
                 algorithm=algorithm,
                 tile_size_px=self.qds_tile_size.value(),
                 overlap_percent=self.qds_overlap.value(),
                 delay_sec=self.qds_delay.value(),
                 randomize=self.cb_randomize.isChecked(),
-                **algo_params,
+                param_results=algo_params,
             )
         else:
-            if stream:
+            if is_stream:
                 return partial(
-                    self.runner._stream,
+                    self.algorithm._stream, # type: ignore
                     algorithm=algorithm,
-                    **algo_params,
+                    param_results=algo_params,
                 )
             else:
                 return partial(
-                    self.runner._run,
+                    self.algorithm._run, # type: ignore
                     algorithm=algorithm,
-                    **algo_params,
+                    param_results=algo_params,
                 )
 
     @require_algorithm
     def _open_info_link_from_btn(self, *args, **kwargs):
-        self.runner.info(algorithm=self.cb_algorithms.currentText())
+        self.algorithm.info(algorithm=self.cb_algorithms.currentText()) # type: ignore
 
     @require_algorithm
     def get_algorithm_parameters(self):
-        return self.runner.get_parameters(self.cb_algorithms.currentText())
+        return self.algorithm.get_parameters(self.cb_algorithms.currentText()) # type: ignore
 
     @require_algorithm
     def update_n_samples(self):
-        n_samples_avail = self.runner.get_n_samples(self.cb_algorithms.currentText())
+        n_samples_avail = self.algorithm.get_n_samples(self.cb_algorithms.currentText()) # type: ignore
         self.samples_select.clear()
         self.samples_select.addItems([f"{k}" for k in range(n_samples_avail)])
         self.samples_select_label.setText(f"Samples ({n_samples_avail})")
@@ -173,15 +184,3 @@ class RunnerWidget:
             self.cb_randomize,
         ]:
             ui_element.setEnabled(run_in_tiles)
-
-    def _resolve_sk_params(self, sample_params: Dict[str, Any]) -> Dict[str, DataLayer]:
-        """Resolve a full set of parameters, with semantics, from sample parameters."""
-        algorithm_name = self.cb_algorithms.currentText()
-        algo_params_defs = self.runner.get_parameters(algorithm_name).get("properties")
-        sk_params = {}
-        for param_name, param_value in sample_params.items():
-            for param_name_, param_props in algo_params_defs.items():
-                if param_name == param_name_:
-                    kind = param_props.get("param_type")
-                    sk_params[param_name] = DATA_TYPES.get(kind)(data=param_value)
-        return sk_params

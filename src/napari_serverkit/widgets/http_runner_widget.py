@@ -19,7 +19,7 @@ class HttpRunnerWidget(RunnerWidget):
         super().__init__(algorithm=None)
 
         default_url = "http://localhost:8000"
-        self.runner = sk.Client()
+        self.algorithm = sk.Client()
 
         # Layout and widget
         self.full_widget = QWidget()
@@ -48,8 +48,8 @@ class HttpRunnerWidget(RunnerWidget):
         server_url = self.server_url_field.text()
 
         try:
-            self.runner.connect(server_url)
+            self.algorithm.connect(server_url)
         except (ServerRequestError, AlgorithmServerError) as e:
             show_warning(e.message)
 
-        self.cb_algorithms.addItems(self.runner.algorithms)
+        self.cb_algorithms.addItems(self.algorithm.algorithms)

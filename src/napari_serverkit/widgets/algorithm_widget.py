@@ -10,5 +10,5 @@ class AlgorithmWidget(ServerKitWidget):
 
         self.runner_widget.cb_algorithms.clear()
         self.runner_widget.cb_algorithms.addItems(
-            self.runner_widget.runner.algorithms
+            self.runner_widget.algorithm.algorithms # type: ignore
         )

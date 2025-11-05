@@ -1,12 +1,13 @@
-from typing import Callable, Dict
+from typing import Callable, Dict, Type
 
 import napari.layers
 from qtpy.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout,
                             QGroupBox, QLabel, QLineEdit, QSpinBox)
 
+from imaging_server_kit.core.results import Results
 from napari_serverkit.widgets.napari_results import NapariResults
 
-NAPARI_LAYER_MAPPINGS = {
+NAPARI_LAYER_MAPPINGS: Dict[str, Type[napari.layers.Layer]] = {
     "image": napari.layers.Image,
     "mask": napari.layers.Labels,
     "instance_mask": napari.layers.Labels,
@@ -40,19 +41,19 @@ class ParameterPanel:
     def update(self, schema: Dict):
         # Clean-up the previous dynamic UI layout
         for i in reversed(range(self.layout.count())):
-            self.layout.itemAt(i).widget().setParent(None)
+            ui_item = self.layout.itemAt(i)
+            if ui_item is not None:
+                ui_item_widget = ui_item.widget()
+                if ui_item_widget is not None:
+                    ui_item_widget.setParent(None)
 
-        # Generate the new dynamic UI state and layout
+        # Generate the new dynamic UI state and layout (TODO: this has grown to be quite complex; we should probably rework self.ui_state and the design here)
         self.ui_state = {}
         for k, (param_name, param_values) in enumerate(schema["properties"].items()):
-            # Parameter name
-            qt_label = QLabel(param_values.get("title"))
-            self.layout.addWidget(qt_label, k, 0)
-
             # Add the right UI element based on the retreived parameter type.
             param_type = param_values.get("param_type")
 
-            if param_type == "dropdown":
+            if param_type == "choice":
                 qt_widget = QComboBox()
                 # If there is only one element, we get a `const` attribute instead of `enum`
                 if param_values.get("enum") is None:
@@ -62,6 +63,8 @@ class ParameterPanel:
                 qt_widget.setCurrentText(param_values.get("default"))
                 if param_values.get("auto_call"):
                     qt_widget.currentTextChanged.connect(self._trigger_func)
+                qt_widget_setter_func = qt_widget.setCurrentText
+                widget_value_recover_func = lambda qt_widget: qt_widget.currentText()
             elif param_type == "int":
                 qt_widget = QSpinBox()
                 qt_widget.setMinimum(param_values.get("minimum"))
@@ -71,6 +74,8 @@ class ParameterPanel:
                     qt_widget.setSingleStep(param_values.get("step"))
                 if param_values.get("auto_call"):
                     qt_widget.valueChanged.connect(self._trigger_func)
+                qt_widget_setter_func = qt_widget.setValue
+                widget_value_recover_func = lambda qt_widget: int(qt_widget.value())
             elif param_type == "float":
                 qt_widget = QDoubleSpinBox()
                 qt_widget.setMinimum(param_values.get("minimum"))
@@ -80,67 +85,75 @@ class ParameterPanel:
                     qt_widget.setSingleStep(param_values.get("step"))
                 if param_values.get("auto_call"):
                     qt_widget.valueChanged.connect(self._trigger_func)
+                qt_widget_setter_func = qt_widget.setValue
+                widget_value_recover_func = lambda qt_widget: float(qt_widget.value())
             elif param_type == "bool":
                 qt_widget = QCheckBox()
                 qt_widget.setChecked(param_values.get("default"))
                 if param_values.get("auto_call"):
                     qt_widget.stateChanged.connect(self._trigger_func)
+                qt_widget_setter_func = qt_widget.setChecked
+                widget_value_recover_func = lambda qt_widget: qt_widget.isChecked()
             elif param_type == "str":
                 qt_widget = QLineEdit()
                 qt_widget.setText(param_values.get("default"))
+                qt_widget_setter_func = qt_widget.setText
+                widget_value_recover_func = lambda qt_widget: qt_widget.text()
             elif param_type == "notification":
                 # A notification input (probably never going to happen)
                 qt_widget = QLineEdit()
                 qt_widget.setText(param_values.get("default"))
+                qt_widget_setter_func = qt_widget.setText
+                widget_value_recover_func = lambda qt_widget: qt_widget.text()
+            elif param_type == "null":
+                # Ignore Null parameters
+                qt_widget = None
+                qt_widget_setter_func = None
+                widget_value_recover_func = lambda qt_widget: None
             else:
                 # Numpy layers
-                qt_widget = QComboBox()
-                if param_type not in self.layer_comboboxes:
-                    self.layer_comboboxes[param_name] = []
-                self.layer_comboboxes[param_type].append(qt_widget)
+                if param_type not in NAPARI_LAYER_MAPPINGS:
+                    qt_widget = None
+                    self.layer_comboboxes[param_type] = []
+                else:
+                    qt_widget = QComboBox()
+                    if param_type not in self.layer_comboboxes:
+                        self.layer_comboboxes[param_type] = []
+                    self.layer_comboboxes[param_type].append(qt_widget)
+                qt_widget_setter_func = None
+                widget_value_recover_func = lambda qt_widget: None
 
-            self.layout.addWidget(qt_widget, k, 1)
+            if qt_widget is not None:
+                self.layout.addWidget(QLabel(param_values.get("title")), k, 0)
+                self.layout.addWidget(qt_widget, k, 1)
 
-            self.ui_state[param_name] = (param_type, qt_widget)
+            self.ui_state[param_name] = (param_type, qt_widget, qt_widget_setter_func, widget_value_recover_func)
 
         self._on_layer_change(None)  # Refresh dropdowns in new UI
 
     def _on_layer_change(self, *args, **kwargs):
         for kind, cb_list in self.layer_comboboxes.items():
-            layer_type = NAPARI_LAYER_MAPPINGS[kind]
+            layer_type: Type[napari.layers.Layer] = NAPARI_LAYER_MAPPINGS[kind]
             for cb in cb_list:
                 cb.clear()
                 for layer in self.napari_results.viewer.layers:
                     if isinstance(layer, layer_type):
                         cb.addItem(layer.name, layer.data)
 
-    def get_algo_params(self) -> Dict:
+    def get_algo_params(self) -> Results:
         """Create a dictionary representation of parameter values based on the UI state."""
-        algo_params = {}
-        for param_name, (param_widget_type, qt_widget) in self.ui_state.items():
-            if param_widget_type == "dropdown":
-                param_value = qt_widget.currentText()
-            elif param_widget_type == "int":
-                param_value = int(qt_widget.value())
-            elif param_widget_type == "float":
-                param_value = float(qt_widget.value())
-            elif param_widget_type == "str":
-                param_value = qt_widget.text()
-            elif param_widget_type == "bool":
-                param_value = qt_widget.isChecked()
-            elif param_widget_type == "notification":
-                param_value = qt_widget.text()
-            else:
-                # Numpy layers
+        algo_params = Results()
+        for name, (kind, qt_widget, qt_widget_setter_func, widget_value_recover_func) in self.ui_state.items():
+            if kind in NAPARI_LAYER_MAPPINGS:
                 if qt_widget.currentText():
                     layer_name = qt_widget.currentText()
                     layer = self.napari_results.read(layer_name)
-                    param_value = layer.data if layer else None
+                    data = layer.data if layer else None
                 else:
-                    param_value = None
-
-            algo_params[param_name] = param_value
-
+                    data = None
+            else:
+                data = widget_value_recover_func(qt_widget)
+            algo_params.create(kind=kind, data=data, name=name)
         return algo_params
 
     def manage_cbs_events(self, worker):

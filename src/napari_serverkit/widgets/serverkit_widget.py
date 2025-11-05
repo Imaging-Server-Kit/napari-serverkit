@@ -1,5 +1,4 @@
 from functools import partial
-from typing import Dict
 import napari
 from napari.utils.notifications import show_info, show_warning
 from qtpy.QtCore import Qt
@@ -14,6 +13,7 @@ from napari_serverkit.widgets.parameter_panel import ParameterPanel, NAPARI_LAYE
 from napari_serverkit.widgets.task_manager import TaskManager
 from napari_serverkit.widgets.napari_results import NapariResults
 from napari_serverkit.widgets.runner_widget import RunnerWidget
+from imaging_server_kit.core.results import LayerStackBase
 
 
 class ServerKitWidget(QWidget):
@@ -24,7 +24,7 @@ class ServerKitWidget(QWidget):
 
         # Layout
         layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignTop)
+        layout.setAlignment(Qt.AlignTop) # type: ignore
         self.setLayout(layout)
 
         # Add the runner's extra UI
@@ -62,7 +62,7 @@ class ServerKitWidget(QWidget):
         cancel_btn.clicked.connect(self._cancel)
         layout.addWidget(cancel_btn)
 
-        self.pbar = QProgressBar(minimum=0, maximum=1)
+        self.pbar = QProgressBar(minimum=0, maximum=1) # type: ignore
         layout.addWidget(self.pbar)
 
     def _algorithm_changed(self, selected_algo):
@@ -90,46 +90,27 @@ class ServerKitWidget(QWidget):
                 self.napari_results.merge,
                 tiles_callback=self._update_pbar_on_tiled,
             )
-            self.tasks.add_active(task=task, return_func=return_func)
+            self.tasks.add_active(task, return_func)
 
     def _sample_triggered(self):
         idx = self.runner_widget.samples_select.currentText()
         if idx == "":
             return
-        idx = int(idx)
-        download_sample_func = partial(
-            self.runner_widget._download_sample,
-            idx=idx,
-        )
         self.tasks.add_active(
-            task=download_sample_func,
+            task=partial(self.runner_widget._download_sample, idx=int(idx)),
             return_func=self._sample_emitted,
         )
 
-    def _sample_emitted(self, sample_params: Dict):
-        sk_params = self.runner_widget._resolve_sk_params(sample_params)
-        for param_name, skp in sk_params.items():
-            kind = skp.kind
-            data = skp.data
-            name = skp.name
-            meta = skp.meta
-            if kind in list(NAPARI_LAYER_MAPPINGS.keys()):
-                self.napari_results.create(kind=kind, data=data, name=name, meta=meta)
+    def _sample_emitted(self, sample: LayerStackBase):
+        for sp in sample:
+            if sp.kind in NAPARI_LAYER_MAPPINGS:
+                if sp.data is not None:
+                    self.napari_results.create(sp.kind, sp.data, sp.name, sp.meta)
             else:
                 # Set values in the parameters UI
-                param_type, widget = self.params_panel.ui_state.get(param_name)
-                if param_type == "dropdown":
-                    widget.setCurrentText(data)
-                elif param_type == "int":
-                    widget.setValue(data)
-                elif param_type == "float":
-                    widget.setValue(data)
-                elif param_type == "bool":
-                    widget.setChecked(data)
-                elif param_type == "str":
-                    widget.setText(data)
-                elif param_type == "notification":
-                    widget.setText(data)
+                qt_widget_setter_func = self.params_panel.ui_state[sp.name][2]
+                if qt_widget_setter_func is not None:
+                    qt_widget_setter_func(sp.data)
 
     def _cancel(self):
         show_info("Cancelling...")
