@@ -3,7 +3,7 @@
 
 Run [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) algorithms interactively in [Napari](https://napari.org/stable/).
 
-[napari_screencast.webm](https://github.com/user-attachments/assets/4c1e3e0d-0623-4fe4-a9dd-c9d1e5e68844)
+[screencast.webm](https://github.com/user-attachments/assets/1ac68cc5-da38-4430-819a-30d325a43176)
 
 ## Installation
 
