@@ -114,10 +114,10 @@ class RunnerWidget:
             sample = self.algorithm.get_sample( # type: ignore
                 self.cb_algorithms.currentText(), *args, **kwargs
             )
+            if sample is not None:
+                return sample
         except:
             show_warning("Failed to download sample.")
-        if sample is not None:
-            return sample
         return Results()
 
     @require_algorithm
