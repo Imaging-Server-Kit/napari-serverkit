@@ -1,4 +1,5 @@
 from typing import Callable, Dict, Type
+import numpy as np
 
 import napari.layers
 from qtpy.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout,
@@ -147,8 +148,30 @@ class ParameterPanel:
             if kind in NAPARI_LAYER_MAPPINGS:
                 if qt_widget.currentText():
                     layer_name = qt_widget.currentText()
-                    layer = self.napari_results.read(layer_name)
+                    layer = self.napari_results.viewer.layers[layer_name]
                     data = layer.data if layer else None
+                    # For Images and Masks, the results_layer.data is the napari layer's data (remains true when a mask is annotated)
+                    # However, this is not the case for shapes (points, vectors, rectangles...).
+                    # In this case, we need to manually sync results_layer.data with the current napari layer data here.
+                    # This is not great (probably prone to bugs) - TODO: find a better way of handling this?
+                    results_layer = self.napari_results.read(layer_name)
+                    if results_layer is not None:
+                        if results_layer.data is not data:
+                            # Moreover, we need to handle boxes as a special case; Shapes.data are interpreted as boxes, 
+                            # however the napari layer data is a list of arrays, so we need to cast it into a numpy array of shape (N, 4, D).
+                            if results_layer.kind == "boxes":
+                                if isinstance(data, list):
+                                    if len(data) == 0:
+                                        # If the layer data is an empty list, we should convert it to None instead.
+                                        data = None
+                                    else:
+                                        # We assume the Shapes layer contains rectangles that can be casted to a single "boxes" array.
+                                        try:
+                                            data = np.asarray(data)
+                                        except:
+                                            print("Could not interpret the content of this Shapes layer as boxes (ignoring it instead): ", layer)
+                                            data = None
+                            self.napari_results.update(layer_name, data, results_layer.meta)
                 else:
                     data = None
             else:

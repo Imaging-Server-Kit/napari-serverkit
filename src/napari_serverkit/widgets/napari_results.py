@@ -2,7 +2,7 @@
 Implements the LayerStackBase interface for Napari's viewer.
 """
 
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import numpy as np
 
 import napari
@@ -120,27 +120,29 @@ def napari_layer_to_results_layer(napari_layer, results: Results):
     # layer_to_kind = {}  # TODO: better approach...
     if isinstance(napari_layer, napari.layers.Image):
         kind = "image"
+        data = napari_layer.data
     elif isinstance(napari_layer, napari.layers.Labels):
         kind = "mask"
+        data = napari_layer.data
     elif isinstance(napari_layer, napari.layers.Points):
         kind = "points"
+        data = napari_layer.data
     elif isinstance(napari_layer, napari.layers.Tracks):
         kind = "tracks"
+        data = napari_layer.data
     elif isinstance(napari_layer, napari.layers.Vectors):
         kind = "vectors"
+        data = napari_layer.data
     elif isinstance(napari_layer, napari.layers.Shapes):
-        if napari_layer.shape_type == "rectangle":
-            kind = "boxes"
-        elif napari_layer.shape_type == "path":
-            kind = "paths"
-        else:
-            print("Could not convert this layer: ", napari_layer)
-            return results
+        # TODO: For now, when a `Shapes` layer is created, we assume it's meant to contain boxes (rectangles).
+        # So, it won't work with algorithms that would use annotated "Paths" as input (quite rare).
+        kind = "boxes"
+        data = None  # instead of []
     else:
         print("Could not convert this layer: ", napari_layer)
         return results
 
-    results.create(kind=kind, data=napari_layer.data, name=napari_layer.name)
+    results.create(kind=kind, data=data, name=napari_layer.name)
 
     return results
 
@@ -207,7 +209,7 @@ class NapariResults(LayerStackBase):
         read(self.viewer, layer)
         return layer
 
-    def update(self, layer_name, layer_data: np.ndarray, layer_meta: Dict):
+    def update(self, layer_name, layer_data: Any, layer_meta: Dict):
         layer = self.results.update(layer_name, layer_data, layer_meta)
         update(self.viewer, layer)
         return layer
