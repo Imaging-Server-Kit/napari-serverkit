@@ -54,6 +54,9 @@ class RunnerWidget:
         layout.addWidget(self.samples_select_label, 2, 0)
         layout.addWidget(self.samples_select, 2, 1)
         layout.addWidget(self.samples_select_btn, 2, 2)
+        self.samples_select.setVisible(False)
+        self.samples_select_btn.setVisible(False)
+        self.samples_select_label.setVisible(False)
 
         # (Experimental) run in tiles
         experimental_gb = QCollapsibleGroupBox("Tiled inference") # type: ignore
@@ -171,10 +174,19 @@ class RunnerWidget:
 
     @require_algorithm
     def update_n_samples(self):
-        n_samples_avail = self.algorithm.get_n_samples(self.cb_algorithms.currentText()) # type: ignore
+        n_samples_available = self.algorithm.get_n_samples(self.cb_algorithms.currentText()) # type: ignore
+        
         self.samples_select.clear()
-        self.samples_select.addItems([f"{k}" for k in range(n_samples_avail)])
-        self.samples_select_label.setText(f"Samples ({n_samples_avail})")
+        if n_samples_available == 0:
+            self.samples_select.setVisible(False)
+            self.samples_select_btn.setVisible(False)
+            self.samples_select_label.setVisible(False)
+        else:
+            self.samples_select.setVisible(True)
+            self.samples_select_btn.setVisible(True)
+            self.samples_select_label.setVisible(True)
+            self.samples_select.addItems([f"{k}" for k in range(n_samples_available)])
+            self.samples_select_label.setText(f"Samples ({n_samples_available})")
 
     def _run_in_tiles_changed(self, run_in_tiles: bool):
         for ui_element in [
