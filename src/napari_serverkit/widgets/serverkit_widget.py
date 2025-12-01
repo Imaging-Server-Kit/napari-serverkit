@@ -74,6 +74,8 @@ class ServerKitWidget(QWidget):
             self.params_panel.update(schema)
             # Update the number of samples available
             self.runner_widget.update_n_samples()
+            # Check if tiled inference should be displayed or not
+            self.runner_widget.update_tiled_ui()
         except (AlgorithmServerError, ServerRequestError) as e:
             show_warning(e.message)
 

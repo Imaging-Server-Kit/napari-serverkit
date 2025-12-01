@@ -59,10 +59,10 @@ class RunnerWidget:
         self.samples_select_label.setVisible(False)
 
         # (Experimental) run in tiles
-        experimental_gb = QCollapsibleGroupBox("Tiled inference") # type: ignore
-        experimental_gb.setChecked(False)
-        experimental_layout = QGridLayout(experimental_gb)
-        layout.addWidget(experimental_gb, 3, 0, 1, 3)
+        self.experimental_gb = QCollapsibleGroupBox("Tiled inference") # type: ignore
+        self.experimental_gb.setChecked(False)
+        experimental_layout = QGridLayout(self.experimental_gb)
+        layout.addWidget(self.experimental_gb, 3, 0, 1, 3)
 
         experimental_layout.addWidget(QLabel("Run in tiles"), 0, 0)
         self.cb_run_in_tiles = QCheckBox()
@@ -188,6 +188,11 @@ class RunnerWidget:
             self.samples_select.addItems([f"{k}" for k in range(n_samples_available)])
             self.samples_select_label.setText(f"Samples ({n_samples_available})")
 
+    @require_algorithm
+    def update_tiled_ui(self):
+        algo_is_tileable = self.algorithm.is_tileable(self.cb_algorithms.currentText())
+        self.experimental_gb.setVisible(algo_is_tileable)
+    
     def _run_in_tiles_changed(self, run_in_tiles: bool):
         for ui_element in [
             self.qds_tile_size,
