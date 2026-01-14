@@ -30,8 +30,8 @@ dependencies = [
 napari_serverkit = "napari_serverkit:napari.yaml"
 
 [project.urls]
-homepage = "https://github.com/EPFL-Center-for-Imaging/napari-serverkit"
-repository = "https://github.com/EPFL-Center-for-Imaging/napari-serverkit"
+homepage = "https://github.com/Imaging-Server-Kit/napari-serverkit"
+repository = "https://github.com/Imaging-Server-Kit/napari-serverkit"
 
 [build-system]
 requires = ["setuptools>=42.0.0", "wheel", "setuptools_scm"]
