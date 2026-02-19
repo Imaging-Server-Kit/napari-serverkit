@@ -9,20 +9,14 @@ class TaskManager:
         self,
         grayout_ui: Callable,
         ungrayout_ui: Callable,
-        progress_update_func: Callable,
         parameters_panel: ParameterPanel,
     ):
-        self.progress_update_func = progress_update_func
         self.ungrayout_func = ungrayout_ui
         self.grayout_func = grayout_ui
         self.active_workers = []
         self.parameters_panel = parameters_panel
 
-    @property
-    def n_active(self):
-        return len(self.active_workers)
-
-    def add_active(self, task: Callable, return_func: Callable, max_iter: int = 0):
+    def add_active(self, task: Callable, return_func: Callable):
         worker = thread_worker(task)()
 
         worker.returned.connect(return_func)
@@ -34,9 +28,6 @@ class TaskManager:
             worker.aborted.connect(self._worker_stopped)
 
         self.parameters_panel.manage_cbs_events(worker)
-
-        if max_iter > 0:
-            worker.yielded.connect(lambda step: self.progress_update_func(step))
 
         self.active_workers.append(worker)
         self.grayout_func()

@@ -19,7 +19,11 @@ from imaging_server_kit.core.results import LayerStackBase
 class ServerKitWidget(QWidget):
     def __init__(self, viewer: napari.Viewer, runner_widget: RunnerWidget):
         super().__init__()
-        self.napari_results = NapariResults(viewer)
+        
+        # Progress bar (can be accessed by NapariResults; will eventually turn into a "Results" layout container)
+        self.pbar = QProgressBar(minimum=0, maximum=1) # type: ignore
+        
+        self.napari_results = NapariResults(viewer, pbar=self.pbar)  # Shared with NapariResults here...
         self.runner_widget = runner_widget
 
         # Layout
@@ -52,7 +56,7 @@ class ServerKitWidget(QWidget):
         self.tasks = TaskManager(
             self._grayout_ui,  # called when worker starts
             self._ungrayout_ui,  # called when worker stops
-            self._update_pbar,  # called when worker yields
+            # self._update_pbar,  # called when worker yields
             self.params_panel,  # linked to manage_cbs_events(worker)
         )
 
@@ -62,7 +66,7 @@ class ServerKitWidget(QWidget):
         cancel_btn.clicked.connect(self._cancel)
         layout.addWidget(cancel_btn)
 
-        self.pbar = QProgressBar(minimum=0, maximum=1) # type: ignore
+        # Progress bar (= soon to be Results layout appears at the bottom)
         layout.addWidget(self.pbar)
 
     def _algorithm_changed(self, selected_algo):
@@ -80,19 +84,15 @@ class ServerKitWidget(QWidget):
             show_warning(e.message)
 
     def _run(self):
-        algo_params = self.params_panel.get_algo_params()
+        params_res = self.params_panel.get_algo_params()
 
         try:
-            task = self.runner_widget._get_run_func(algo_params)
+            task = self.runner_widget._get_run_func(params_res)
         except (AlgorithmServerError, ServerRequestError) as e:
             show_warning(e.message)
 
         if task:
-            return_func = partial(
-                self.napari_results.merge,
-                tiles_callback=self._update_pbar_on_tiled,
-            )
-            self.tasks.add_active(task, return_func)
+            self.tasks.add_active(task, self.napari_results.merge)  # TODO: we should also do napari_results.delete("Tile progress")
 
     def _sample_triggered(self):
         idx = self.runner_widget.samples_select.currentText()
@@ -107,10 +107,10 @@ class ServerKitWidget(QWidget):
         for sp in sample:
             if sp.kind in NAPARI_LAYER_MAPPINGS:
                 if sp.data is not None:
-                    self.napari_results.create(sp.kind, sp.data, sp.name, sp.meta)
+                    self.napari_results.create(kind=sp.kind, name=sp.name, data=sp.data, meta=sp.meta)
             else:
                 # Set values in the parameters UI
-                qt_widget_setter_func = self.params_panel.ui_state[sp.name][2]
+                qt_widget_setter_func = self.params_panel.ui_state[sp.name].qt_widget_setter_func
                 if qt_widget_setter_func is not None:
                     qt_widget_setter_func(sp.data)
 
@@ -128,13 +128,6 @@ class ServerKitWidget(QWidget):
             ui_element.setEnabled(False)
 
     def _ungrayout_ui(self):
-        self.pbar.setMaximum(1)  # Stop the pbar
+        self.pbar.setMaximum(1)  # Stop the pbar (TODO: how to cleanly reset it?)
         for ui_element in self.grayout_ui_list:
             ui_element.setEnabled(True)
-
-    def _update_pbar(self, value: int):
-        self.pbar.setValue(value)
-
-    def _update_pbar_on_tiled(self, tile_idx, n_tiles):
-        self.pbar.setMaximum(n_tiles)
-        self.pbar.setValue(tile_idx)

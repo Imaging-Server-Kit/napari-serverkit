@@ -3,6 +3,7 @@ from typing import Callable, Dict, Optional
 
 from imaging_server_kit.core.results import DataLayer, Results
 from imaging_server_kit.core.algorithm import Algorithm
+from imaging_server_kit.core.tiling import TilingContext
 from napari.utils.notifications import show_warning
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
@@ -114,55 +115,48 @@ class RunnerWidget:
     @require_algorithm
     def _download_sample(self, *args, **kwargs) -> Results:
         try:
-            sample = self.algorithm.get_sample( # type: ignore
-                self.cb_algorithms.currentText(), *args, **kwargs
-            )
-            if sample is not None:
-                return sample
+            if self.algorithm:
+                sample = self.algorithm.get_sample(
+                    self.cb_algorithms.currentText(), *args, **kwargs
+                )
+                if sample is not None:
+                    return sample
         except:
             show_warning("Failed to download sample.")
         return Results()
 
     @require_algorithm
-    def _get_run_func(self, algo_params: Results) -> Optional[Callable]:
+    def _get_run_func(self, params_res: Results) -> Optional[Callable]:
+        if not self.algorithm:
+            return
+        
         algorithm: str = self.cb_algorithms.currentText()
         tiled = self.cb_run_in_tiles.isChecked()
-        is_stream = self.algorithm._is_stream(algorithm) # type: ignore
 
-        # Handle the RGB case (suboptimal)
-        algo_param_defs: Dict = self.algorithm.get_parameters(algorithm)["properties"] # type: ignore
+        # Handle the RGB case (TODO: suboptimal...)
+        algo_param_defs: Dict = self.algorithm.get_parameters(algorithm)["properties"]
         for param_name, param_value in algo_param_defs.items():
-            layer: Optional[DataLayer] = algo_params.read(param_name)
+            layer: Optional[DataLayer] = params_res.read(param_name)
             if layer is not None:
                 if layer.kind == "image":
-                    layer.rgb = param_value.get("rgb") # type: ignore
+                    layer.rgb = param_value.get("rgb")
 
         if tiled:
-            if is_stream:
-                show_warning("Cannot run streamed algorithm in tiling mode!")
-                return
-            return partial(
-                self.algorithm._tile, # type: ignore
-                algorithm=algorithm,
+            tiling_ctx = TilingContext(
                 tile_size_px=self.qds_tile_size.value(),
                 overlap_percent=self.qds_overlap.value(),
                 delay_sec=self.qds_delay.value(),
                 randomize=self.cb_randomize.isChecked(),
-                param_results=algo_params,
             )
         else:
-            if is_stream:
-                return partial(
-                    self.algorithm._stream, # type: ignore
-                    algorithm=algorithm,
-                    param_results=algo_params,
-                )
-            else:
-                return partial(
-                    self.algorithm._run, # type: ignore
-                    algorithm=algorithm,
-                    param_results=algo_params,
-                )
+            tiling_ctx = None
+        
+        return partial(
+            self.algorithm.run_generator,
+            algorithm=algorithm,
+            tiling_ctx=tiling_ctx,
+            params_res=params_res,
+        )
 
     @require_algorithm
     def _open_info_link_from_btn(self, *args, **kwargs):
