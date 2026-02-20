@@ -9,7 +9,10 @@ from imaging_server_kit.core.errors import (
     ServerRequestError,
 )
 
-from napari_serverkit.widgets.parameter_panel import ParameterPanel, NAPARI_LAYER_MAPPINGS
+from napari_serverkit.widgets.parameter_panel import (
+    ParameterPanel,
+    NAPARI_LAYER_MAPPINGS,
+)
 from napari_serverkit.widgets.task_manager import TaskManager
 from napari_serverkit.widgets.napari_results import NapariResults
 from napari_serverkit.widgets.runner_widget import RunnerWidget
@@ -19,16 +22,18 @@ from imaging_server_kit.core.results import LayerStackBase
 class ServerKitWidget(QWidget):
     def __init__(self, viewer: napari.Viewer, runner_widget: RunnerWidget):
         super().__init__()
-        
+
         # Progress bar (can be accessed by NapariResults; will eventually turn into a "Results" layout container)
-        self.pbar = QProgressBar(minimum=0, maximum=1) # type: ignore
-        
-        self.napari_results = NapariResults(viewer, pbar=self.pbar)  # Shared with NapariResults here...
+        self.pbar = QProgressBar(minimum=0, maximum=1)  # type: ignore
+
+        self.napari_results = NapariResults(
+            viewer, pbar=self.pbar
+        )  # Shared with NapariResults here...
         self.runner_widget = runner_widget
 
         # Layout
         layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignTop) # type: ignore
+        layout.setAlignment(Qt.AlignTop)  # type: ignore
         self.setLayout(layout)
 
         # Add the runner's extra UI
@@ -56,7 +61,6 @@ class ServerKitWidget(QWidget):
         self.tasks = TaskManager(
             self._grayout_ui,  # called when worker starts
             self._ungrayout_ui,  # called when worker stops
-            # self._update_pbar,  # called when worker yields
             self.params_panel,  # linked to manage_cbs_events(worker)
         )
 
@@ -84,15 +88,15 @@ class ServerKitWidget(QWidget):
             show_warning(e.message)
 
     def _run(self):
-        params_res = self.params_panel.get_algo_params()
+        algo_params = self.params_panel.get_algo_params()
 
         try:
-            task = self.runner_widget._get_run_func(params_res)
+            task = self.runner_widget._get_run_func(algo_params=algo_params)
         except (AlgorithmServerError, ServerRequestError) as e:
             show_warning(e.message)
 
         if task:
-            self.tasks.add_active(task, self.napari_results.merge)  # TODO: we should also do napari_results.delete("Tile progress")
+            self.tasks.add_active(task, self.napari_results.merge)
 
     def _sample_triggered(self):
         idx = self.runner_widget.samples_select.currentText()
@@ -107,10 +111,14 @@ class ServerKitWidget(QWidget):
         for sp in sample:
             if sp.kind in NAPARI_LAYER_MAPPINGS:
                 if sp.data is not None:
-                    self.napari_results.create(kind=sp.kind, name=sp.name, data=sp.data, meta=sp.meta)
+                    self.napari_results.create(
+                        kind=sp.kind, name=sp.name, data=sp.data, meta=sp.meta
+                    )
             else:
                 # Set values in the parameters UI
-                qt_widget_setter_func = self.params_panel.ui_state[sp.name].qt_widget_setter_func
+                qt_widget_setter_func = self.params_panel.ui_state[
+                    sp.name
+                ].qt_widget_setter_func
                 if qt_widget_setter_func is not None:
                     qt_widget_setter_func(sp.data)
 

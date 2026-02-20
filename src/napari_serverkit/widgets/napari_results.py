@@ -61,7 +61,6 @@ def create(viewer, layer: DataLayer) -> None:
 
     if napari_layer is not None:
         _set_layer_attributes_from_meta(meta, napari_layer)
-        napari_layer.refresh()
 
 
 @dataclass
@@ -81,7 +80,6 @@ def _napari_layer_update(ctx: UpdateContext):
                     # Assign to the Napari layer data the data from the corresponding context layer
                     l.data = ctx.layer.data
                     _set_layer_attributes_from_meta(ctx.layer.meta, l)
-                    l.refresh()
 
 
 def _notification_update(ctx: UpdateContext):
@@ -104,7 +102,7 @@ def _pbar_update(ctx: UpdateContext):
     if ctx.layer.data is not None:
         ctx.pbar.setValue(ctx.layer.data)
         ctx.pbar.setMaximum(ctx.layer.meta["max_val"])
-
+        
 
 def update(viewer, layer: Optional[DataLayer], pbar: QProgressBar) -> None:
     """Based on the kind of layer, execute the right update function."""

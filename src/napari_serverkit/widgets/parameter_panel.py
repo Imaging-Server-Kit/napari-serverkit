@@ -15,7 +15,6 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from imaging_server_kit.core.results import Results
 from napari_serverkit.widgets.napari_results import NapariResults, update
 
 NAPARI_LAYER_MAPPINGS: Dict[str, Type[napari.layers.Layer]] = {
@@ -165,9 +164,10 @@ class ParameterPanel:
                     if isinstance(layer, layer_type):
                         cb.addItem(layer.name, layer.data)
 
-    def get_algo_params(self) -> Results:
+    def get_algo_params(self) -> Dict:
         """Create a dictionary representation of parameter values based on the UI state."""
-        params_res = Results()
+        algo_params = {}
+
         for name, state_item in self.ui_state.items():
             if state_item.param_type in NAPARI_LAYER_MAPPINGS:
                 if state_item.qt_widget.currentText():
@@ -198,18 +198,20 @@ class ParameterPanel:
                                                 layer,
                                             )
                                             data = None
-                            
+
                             update(
-                                viewer=self.napari_results.viewer, 
-                                layer=results_layer, 
+                                viewer=self.napari_results.viewer,
+                                layer=results_layer,
                                 pbar=self.napari_results.pbar,
                             )
                 else:
                     data = None
             else:
                 data = state_item.widget_value_recover_func(state_item.qt_widget)
-            params_res.create(kind=state_item.param_type, data=data, name=name)
-        return params_res
+
+            algo_params[name] = data
+
+        return algo_params
 
     def manage_cbs_events(self, worker):
         """Whenever a worker returns, we update the napari layer comboboxes to their current index (instead of resetting it)"""

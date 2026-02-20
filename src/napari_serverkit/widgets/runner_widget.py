@@ -1,9 +1,10 @@
 from functools import partial
 from typing import Callable, Dict, Optional
 
-from imaging_server_kit.core.results import DataLayer, Results
+from imaging_server_kit.core.results import Results
 from imaging_server_kit.core.algorithm import Algorithm
 from imaging_server_kit.core.tiling import TilingContext
+import imaging_server_kit.core._etc as etc
 from napari.utils.notifications import show_warning
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
@@ -60,7 +61,7 @@ class RunnerWidget:
         self.samples_select_label.setVisible(False)
 
         # (Experimental) run in tiles
-        self.experimental_gb = QCollapsibleGroupBox("Tiled inference") # type: ignore
+        self.experimental_gb = QCollapsibleGroupBox("Tiled inference")  # type: ignore
         self.experimental_gb.setChecked(False)
         experimental_layout = QGridLayout(self.experimental_gb)
         layout.addWidget(self.experimental_gb, 3, 0, 1, 3)
@@ -110,7 +111,7 @@ class RunnerWidget:
 
     @property
     def update_params_trigger(self) -> Callable:
-        return self.cb_algorithms.currentTextChanged # type: ignore
+        return self.cb_algorithms.currentTextChanged  # type: ignore
 
     @require_algorithm
     def _download_sample(self, *args, **kwargs) -> Results:
@@ -126,20 +127,32 @@ class RunnerWidget:
         return Results()
 
     @require_algorithm
-    def _get_run_func(self, params_res: Results) -> Optional[Callable]:
+    def _get_run_func(self, algo_params: Dict) -> Optional[Callable]:
         if not self.algorithm:
             return
-        
+
         algorithm: str = self.cb_algorithms.currentText()
+
         tiled = self.cb_run_in_tiles.isChecked()
 
-        # Handle the RGB case (TODO: suboptimal...)
         algo_param_defs: Dict = self.algorithm.get_parameters(algorithm)["properties"]
-        for param_name, param_value in algo_param_defs.items():
-            layer: Optional[DataLayer] = params_res.read(param_name)
-            if layer is not None:
-                if layer.kind == "image":
-                    layer.rgb = param_value.get("rgb")
+
+        signature_params = self.algorithm.get_signature_params(algorithm)
+
+        resolved_params = etc.resolve_params(
+            algo_param_defs,
+            signature_params,
+            args=(),
+            algo_params=algo_params,
+        )
+
+        params_res = Results()
+        for name, data in resolved_params.items():
+            kw = algo_param_defs[name]
+            kind = kw.pop("param_type")
+            if "anyOf" in kw:
+                kw.pop("anyOf")  # added by Pydantic - we don't need it.
+            params_res.create(kind=kind, data=data, name=name, **kw)
 
         if tiled:
             tiling_ctx = TilingContext(
@@ -150,7 +163,7 @@ class RunnerWidget:
             )
         else:
             tiling_ctx = None
-        
+
         return partial(
             self.algorithm.run_generator,
             algorithm=algorithm,
@@ -160,16 +173,16 @@ class RunnerWidget:
 
     @require_algorithm
     def _open_info_link_from_btn(self, *args, **kwargs):
-        self.algorithm.info(algorithm=self.cb_algorithms.currentText()) # type: ignore
+        self.algorithm.info(algorithm=self.cb_algorithms.currentText())  # type: ignore
 
     @require_algorithm
     def get_algorithm_parameters(self):
-        return self.algorithm.get_parameters(self.cb_algorithms.currentText()) # type: ignore
+        return self.algorithm.get_parameters(self.cb_algorithms.currentText())  # type: ignore
 
     @require_algorithm
     def update_n_samples(self):
-        n_samples_available = self.algorithm.get_n_samples(self.cb_algorithms.currentText()) # type: ignore
-        
+        n_samples_available = self.algorithm.get_n_samples(self.cb_algorithms.currentText())  # type: ignore
+
         self.samples_select.clear()
         if n_samples_available == 0:
             self.samples_select.setVisible(False)
@@ -186,7 +199,7 @@ class RunnerWidget:
     def update_tiled_ui(self):
         algo_is_tileable = self.algorithm.is_tileable(self.cb_algorithms.currentText())
         self.experimental_gb.setVisible(algo_is_tileable)
-    
+
     def _run_in_tiles_changed(self, run_in_tiles: bool):
         for ui_element in [
             self.qds_tile_size,
