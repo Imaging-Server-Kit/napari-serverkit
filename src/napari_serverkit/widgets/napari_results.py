@@ -169,6 +169,9 @@ class NapariResults(Results):
         name = layer.name
         meta = layer.meta
         
+        if layer.name in [l.name for l in self.viewer.layers]:
+            return layer
+        
         napari_layer = None
         if kind == "image":
             napari_layer = self.viewer.add_image(data, name=name)
