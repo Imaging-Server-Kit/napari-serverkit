@@ -1,7 +1,3 @@
-"""
-Implements the LayerStackBase interface for Napari's viewer.
-"""
-
 from typing import Callable, Dict, List, Optional
 from dataclasses import dataclass
 import numpy as np
@@ -11,7 +7,8 @@ import napari.layers
 from napari.utils.notifications import show_error, show_info, show_warning
 from qtpy.QtWidgets import QProgressBar
 
-from imaging_server_kit.core.results import Results, DataLayer
+from imaging_server_kit.core.stack import Stack
+from imaging_server_kit.types import Layer, layer_factory
 
 
 def _set_layer_attributes_from_meta(meta: Dict, napari_layer: napari.layers.Layer):
@@ -21,7 +18,15 @@ def _set_layer_attributes_from_meta(meta: Dict, napari_layer: napari.layers.Laye
         try:
             setattr(napari_layer, "features", value)
         except:
-            print("Could not set layer features.")
+            print("Could not set the  layer features attribute.")
+    
+    if "position" in meta:
+        value = meta["position"]
+        if value is not None:
+            try:
+                setattr(napari_layer, "translate", value)
+            except:
+                print("Could not set the layer translate attribute.")
 
     for key, value in meta.items():
         if key not in ["tile_params", "name", "features", "ndim"]:
@@ -34,7 +39,7 @@ def _set_layer_attributes_from_meta(meta: Dict, napari_layer: napari.layers.Laye
 @dataclass
 class UpdateContext:
     viewer: napari.Viewer
-    layer: DataLayer
+    layer: Layer
     pbar: QProgressBar
 
 
@@ -44,6 +49,10 @@ def _napari_layer_update(ctx: UpdateContext):
             if ctx.layer.data is not None:
                 # Assign to the Napari layer data the data from the corresponding context layer
                 l.data = ctx.layer.data
+
+                if ctx.layer.position is not None:
+                    l.translate = ctx.layer.position
+
                 _set_layer_attributes_from_meta(ctx.layer.meta, l)
 
 
@@ -69,17 +78,15 @@ def _pbar_update(ctx: UpdateContext):
         ctx.pbar.setMaximum(ctx.layer.meta["max_val"])
 
 
-class NapariResults(Results):
-    """Works like Results, but behaves in sync with a Napari Viewer."""
+class NapariStack(Stack):
+    """Stack synced with a Napari Viewer."""
 
     def __init__(
         self,
         viewer: Optional[napari.Viewer] = None,
         pbar: Optional[QProgressBar] = None,
-        layers: Optional[List[DataLayer]] = None,
+        layers: Optional[List[Layer]] = None,
     ):
-        super().__init__(layers=layers)
-        
         # Create a Viewer
         if viewer is None:
             self.viewer = napari.Viewer()
@@ -92,7 +99,9 @@ class NapariResults(Results):
         else:
             self.pbar = pbar
 
-        # Instanciate layers and add the existing Napari viewer layers to results
+        super().__init__(layers=layers)
+
+        # Instanciate layers and add the existing Napari viewer layers to the stack
         for l in self.viewer.layers:
             self._handle_new_layer(l)
 
@@ -131,7 +140,6 @@ class NapariResults(Results):
         existing_layer = self.read(napari_layer.name)
         if existing_layer is not None:
             return
-            # self.results = napari_layer_to_results_layer(napari_layer, self.results)
         # layer_to_kind = {}  # TODO: better approach...
         if isinstance(napari_layer, napari.layers.Image):
             kind = "image"
@@ -157,21 +165,23 @@ class NapariResults(Results):
             print("Could not convert this layer: ", napari_layer)
             return
 
-        # Keep track of the new Napari layer in the layer stack (even without any layer metadata)
-        self.create(kind=kind, name=napari_layer.name, data=data)
-            
-    def post_create(self, layer: DataLayer) -> DataLayer:
+        # Keep track of the new Napari layer in the layer stack (without any layer metadata)
+        # TODO: check this
+        layer = layer_factory(kind=kind, name=napari_layer.name, data=data)
+        self.add(layer)
+
+    def _post_add(self, layer: Layer) -> Layer:
         if layer.data is None:
             return layer
-        
+
         kind = layer.kind
         data = layer.data
         name = layer.name
         meta = layer.meta
-        
+
         if layer.name in [l.name for l in self.viewer.layers]:
             return layer
-        
+
         napari_layer = None
         if kind == "image":
             napari_layer = self.viewer.add_image(data, name=name)
@@ -183,9 +193,13 @@ class NapariResults(Results):
             if "shape_type" in meta:  # Make sure it isn't used twice
                 meta.pop("shape_type")
             if kind == "boxes":
-                napari_layer = self.viewer.add_shapes(data, name=name, shape_type="rectangle")
+                napari_layer = self.viewer.add_shapes(
+                    data, name=name, shape_type="rectangle"
+                )
             elif kind == "paths":
-                napari_layer = self.viewer.add_shapes(data, name=name, shape_type="path")
+                napari_layer = self.viewer.add_shapes(
+                    data, name=name, shape_type="path"
+                )
         elif kind == "vectors":
             napari_layer = self.viewer.add_vectors(data, name=name)
         elif kind == "tracks":
@@ -193,16 +207,16 @@ class NapariResults(Results):
 
         if napari_layer is not None:
             _set_layer_attributes_from_meta(meta, napari_layer)
-        
+
         return layer
 
-    def post_delete(self, name: str) -> None:
+    def _post_delete(self, name: str) -> None:
         """Hook called after layer deletion."""
         for idx, l in enumerate(self.viewer.layers):
             if l.name == name:
                 self.viewer.layers.pop(idx)
 
-    def post_merge(self, dst_layers: List[DataLayer]) -> None:
+    def _post_merge(self, dst_layers: List[Layer]) -> None:
         for layer in dst_layers:
             update_hooks = {
                 "image": _napari_layer_update,
@@ -219,15 +233,15 @@ class NapariResults(Results):
                 "str": _textlayer_update,
                 "choice": _textlayer_update,
                 "progress": _pbar_update,
-            }            
+            }
             update_func: Optional[Callable] = update_hooks.get(layer.kind)
-            
-            # Before doint the napari layer update, make sure the viewer layers exist by running post_create..
+
+            # Before doing the napari layer update, make sure the viewer layers exist by running post_add..
             # A little weird, but for now the only solution that seems to work!
             if update_func is _napari_layer_update:
                 if not layer.name in [l.name for l in self.viewer.layers]:
-                    self.post_create(layer)
-            
+                    self._post_add(layer)
+
             if update_func is not None:
                 ctx = UpdateContext(viewer=self.viewer, layer=layer, pbar=self.pbar)
                 update_func(ctx)

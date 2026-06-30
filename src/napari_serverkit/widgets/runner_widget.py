@@ -1,9 +1,10 @@
 from functools import partial
 from typing import Callable, Dict, Optional
 
-from imaging_server_kit.core.results import Results
+from imaging_server_kit.core.stack import Stack
 from imaging_server_kit.core.algorithm import Algorithm
-from imaging_server_kit.core.tiling import TilingContext
+from imaging_server_kit.core.tiling import TilingSpecs
+from imaging_server_kit.types import layer_factory
 import imaging_server_kit.core._etc as etc
 from napari.utils.notifications import show_warning
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
@@ -114,7 +115,7 @@ class RunnerWidget:
         return self.cb_algorithms.currentTextChanged  # type: ignore
 
     @require_algorithm
-    def _download_sample(self, *args, **kwargs) -> Results:
+    def _download_sample(self, *args, **kwargs) -> Stack:
         try:
             if self.algorithm:
                 sample = self.algorithm.get_sample(
@@ -124,10 +125,10 @@ class RunnerWidget:
                     return sample
         except:
             show_warning("Failed to download sample.")
-        return Results()
+        return Stack()
 
     @require_algorithm
-    def _get_run_func(self, algo_params: Dict) -> Optional[Callable]:
+    def _get_run_func(self, algo_params: Dict):
         if not self.algorithm:
             return
 
@@ -146,30 +147,31 @@ class RunnerWidget:
             algo_params=algo_params,
         )
 
-        params_res = Results()
+        params_stack = Stack()
         for name, data in resolved_params.items():
             kw = algo_param_defs[name]
             kind = kw.pop("param_type")
             if "anyOf" in kw:
                 kw.pop("anyOf")  # added by Pydantic - we don't need it.
-            params_res.create(kind=kind, data=data, name=name, **kw)
+            param_layer = layer_factory(kind=kind, data=data, name=name, **kw)
+            params_stack.add(param_layer)
 
         if tiled:
-            tiling_ctx = TilingContext(
-                tile_size_px=self.qds_tile_size.value(),
-                overlap_percent=self.qds_overlap.value(),
-                delay_sec=self.qds_delay.value(),
-                randomize=self.cb_randomize.isChecked(),
+            tiling_ctx = TilingSpecs(
+                tile_size=self.qds_tile_size.value(),
+                tile_overlap=self.qds_overlap.value(),
+                tile_delay=self.qds_delay.value(),
+                tile_randomize=self.cb_randomize.isChecked(),
             )
         else:
             tiling_ctx = None
-
+        
         return partial(
             self.algorithm.run_generator,
             algorithm=algorithm,
             tiling_ctx=tiling_ctx,
-            params_res=params_res,
-        )
+            params_stack=params_stack,
+        ), params_stack.extent  # Also return the parameters extent
 
     @require_algorithm
     def _open_info_link_from_btn(self, *args, **kwargs):

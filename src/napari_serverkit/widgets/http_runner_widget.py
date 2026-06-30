@@ -6,10 +6,8 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QWidget,
 )
-from imaging_server_kit.core.errors import (
-    AlgorithmServerError,
-    ServerRequestError,
-)
+from imaging_server_kit.core.errors import AlgorithmServerError
+from imaging_server_kit.remote.client import ServerRequestError
 import imaging_server_kit as sk
 from napari_serverkit.widgets.runner_widget import RunnerWidget
 

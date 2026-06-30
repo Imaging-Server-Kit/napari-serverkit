@@ -15,7 +15,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from napari_serverkit.widgets.napari_results import NapariResults
+from napari_serverkit.widgets.napari_stack import NapariStack
 
 NAPARI_LAYER_MAPPINGS: Dict[str, Type[napari.layers.Layer]] = {
     "image": napari.layers.Image,
@@ -37,9 +37,9 @@ class UIStateItem:
 
 
 class ParameterPanel:
-    def __init__(self, trigger: Callable, napari_results: NapariResults):
+    def __init__(self, trigger: Callable, napari_stack: NapariStack):
         self._trigger_func = trigger
-        self.napari_results = napari_results
+        self.napari_stack = napari_stack
 
         self.ui_state: Dict[str, UIStateItem] = {}
         self.layer_comboboxes = {}
@@ -50,9 +50,9 @@ class ParameterPanel:
         self.layout = QGridLayout()
         self.widget.setLayout(self.layout)
 
-        self.napari_results.connect_layer_added_event(self._on_layer_change)
-        self.napari_results.connect_layer_removed_event(self._on_layer_change)
-        self.napari_results.connect_layer_renamed_event(self._on_layer_change)
+        self.napari_stack.connect_layer_added_event(self._on_layer_change)
+        self.napari_stack.connect_layer_removed_event(self._on_layer_change)
+        self.napari_stack.connect_layer_renamed_event(self._on_layer_change)
         self._on_layer_change(None)
 
     def update(self, schema: Dict):
@@ -160,12 +160,12 @@ class ParameterPanel:
             layer_type: Type[napari.layers.Layer] = NAPARI_LAYER_MAPPINGS[kind]
             for cb in cb_list:
                 cb.clear()
-                for layer in self.napari_results.viewer.layers:
+                for layer in self.napari_stack.viewer.layers:
                     if isinstance(layer, layer_type):
-                        
+
                         # Napari layers data are not always in the format expected by serverkit, so we do the conversion here
                         # and assign serverkit-formatted data to the combobox data attributes, which get retreived later as parameters
-                        
+
                         # For boxes, extract the rectangle data from shapes layers (and convert them to Numpy)
                         if kind == "boxes":
                             data = None
@@ -178,7 +178,7 @@ class ParameterPanel:
                                     if len(rectangle_data) > 0:
                                         data = np.array(rectangle_data)
                             cb.addItem(layer.name, data)
-                        
+
                         # For paths, extract the path data from shapes layers
                         elif kind == "paths":
                             data = None
@@ -191,8 +191,8 @@ class ParameterPanel:
                                     if len(path_data) > 0:
                                         data = path_data
                             cb.addItem(layer.name, data)
-                        
-                        else:                      
+
+                        else:
                             cb.addItem(layer.name, layer.data)
 
     def get_algo_params(self) -> Dict:
@@ -202,9 +202,6 @@ class ParameterPanel:
             if state_item.param_type in NAPARI_LAYER_MAPPINGS:
                 if state_item.qt_widget.currentText():
                     data = state_item.qt_widget.currentData()
-                    # layer_name = state_item.qt_widget.currentText()
-                    # layer = self.napari_results.viewer.layers[layer_name]
-                    # data = layer.data if layer else None               
                 else:
                     data = None
             else:
