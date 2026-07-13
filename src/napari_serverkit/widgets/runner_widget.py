@@ -200,6 +200,11 @@ class RunnerWidget:
     @require_algorithm
     def update_tiled_ui(self):
         algo_is_tileable = self.algorithm.is_tileable(self.cb_algorithms.currentText())
+        
+        if algo_is_tileable is False:
+            # Make sure not to run in tiled mode
+            self.cb_run_in_tiles.setChecked(False)
+                   
         self.experimental_gb.setVisible(algo_is_tileable)
 
     def _run_in_tiles_changed(self, run_in_tiles: bool):
