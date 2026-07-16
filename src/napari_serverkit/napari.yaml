@@ -2,9 +2,19 @@ name: napari-serverkit
 display_name: Napari Server Kit
 contributions:
   commands:
-    - id: napari-serverkit.run
+    - id: napari-serverkit.remote
       title: Connect to algorithm server
       python_name: napari_serverkit:ServerKitHttpWidget
+    - id: napari-serverkit.demos
+      title: Demo algorithms
+      python_name: napari_serverkit:AlgorithmDemosWidget
+    - id: napari-serverkit.tools
+      title: Tool algorithms
+      python_name: napari_serverkit:AlgorithmToolsWidget
   widgets:
-    - command: napari-serverkit.run
-      display_name: Server Kit
+    - command: napari-serverkit.remote
+      display_name: Connect to server
+    - command: napari-serverkit.tools
+      display_name: Tool algorithms
+    - command: napari-serverkit.demos
+      display_name: Demo algorithms
