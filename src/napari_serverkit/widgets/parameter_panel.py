@@ -77,16 +77,18 @@ class ParameterPanel:
                     qt_widget.addItem(param_values.get("const"))
                 else:
                     qt_widget.addItems(param_values.get("enum"))
-                qt_widget.setCurrentText(param_values.get("default"))
+                qt_widget.setCurrentText(param_values.get("default", ""))
                 if param_values.get("auto_call"):
                     qt_widget.currentTextChanged.connect(self._trigger_func)
                 qt_widget_setter_func = qt_widget.setCurrentText
                 widget_value_recover_func = lambda qt_widget: qt_widget.currentText()
             elif param_type == "int":
                 qt_widget = QSpinBox()
-                qt_widget.setMinimum(param_values.get("minimum"))
-                qt_widget.setMaximum(param_values.get("maximum"))
-                qt_widget.setValue(param_values.get("default"))
+                if param_values.get("minimum"):
+                    qt_widget.setMinimum(param_values.get("minimum"))
+                if param_values.get("maximum"):
+                    qt_widget.setMaximum(param_values.get("maximum"))
+                qt_widget.setValue(param_values.get("default", 0))
                 if param_values.get("step"):
                     qt_widget.setSingleStep(param_values.get("step"))
                 if param_values.get("auto_call"):
@@ -95,9 +97,11 @@ class ParameterPanel:
                 widget_value_recover_func = lambda qt_widget: int(qt_widget.value())
             elif param_type == "float":
                 qt_widget = QDoubleSpinBox()
-                qt_widget.setMinimum(param_values.get("minimum"))
-                qt_widget.setMaximum(param_values.get("maximum"))
-                qt_widget.setValue(param_values.get("default"))
+                if param_values.get("minimum"):
+                    qt_widget.setMinimum(param_values.get("minimum"))
+                if param_values.get("maximum"):
+                    qt_widget.setMaximum(param_values.get("maximum"))
+                qt_widget.setValue(param_values.get("default", 0.0))
                 if param_values.get("step"):
                     qt_widget.setSingleStep(param_values.get("step"))
                 if param_values.get("auto_call"):
@@ -106,20 +110,20 @@ class ParameterPanel:
                 widget_value_recover_func = lambda qt_widget: float(qt_widget.value())
             elif param_type == "bool":
                 qt_widget = QCheckBox()
-                qt_widget.setChecked(param_values.get("default"))
+                qt_widget.setChecked(param_values.get("default", False))
                 if param_values.get("auto_call"):
                     qt_widget.stateChanged.connect(self._trigger_func)
                 qt_widget_setter_func = qt_widget.setChecked
                 widget_value_recover_func = lambda qt_widget: qt_widget.isChecked()
             elif param_type == "str":
                 qt_widget = QLineEdit()
-                qt_widget.setText(param_values.get("default"))
+                qt_widget.setText(param_values.get("default", ""))
                 qt_widget_setter_func = qt_widget.setText
                 widget_value_recover_func = lambda qt_widget: qt_widget.text()
             elif param_type == "notification":
                 # A notification input (probably never going to happen)
                 qt_widget = QLineEdit()
-                qt_widget.setText(param_values.get("default"))
+                qt_widget.setText(param_values.get("default", ""))
                 qt_widget_setter_func = qt_widget.setText
                 widget_value_recover_func = lambda qt_widget: qt_widget.text()
             elif param_type == "null":
