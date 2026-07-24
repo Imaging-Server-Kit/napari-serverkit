@@ -84,10 +84,10 @@ class ParameterPanel:
                 widget_value_recover_func = lambda qt_widget: qt_widget.currentText()
             elif param_type == "int":
                 qt_widget = QSpinBox()
-                if param_values.get("minimum"):
-                    qt_widget.setMinimum(param_values.get("minimum"))
-                if param_values.get("maximum"):
-                    qt_widget.setMaximum(param_values.get("maximum"))
+                if param_values.get("min"):
+                    qt_widget.setMinimum(param_values.get("min"))
+                if param_values.get("max"):
+                    qt_widget.setMaximum(param_values.get("max"))
                 qt_widget.setValue(param_values.get("default", 0))
                 if param_values.get("step"):
                     qt_widget.setSingleStep(param_values.get("step"))
@@ -97,10 +97,10 @@ class ParameterPanel:
                 widget_value_recover_func = lambda qt_widget: int(qt_widget.value())
             elif param_type == "float":
                 qt_widget = QDoubleSpinBox()
-                if param_values.get("minimum"):
-                    qt_widget.setMinimum(param_values.get("minimum"))
-                if param_values.get("maximum"):
-                    qt_widget.setMaximum(param_values.get("maximum"))
+                if param_values.get("min"):
+                    qt_widget.setMinimum(param_values.get("min"))
+                if param_values.get("max"):
+                    qt_widget.setMaximum(param_values.get("max"))
                 qt_widget.setValue(param_values.get("default", 0.0))
                 if param_values.get("step"):
                     qt_widget.setSingleStep(param_values.get("step"))
