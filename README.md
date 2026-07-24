@@ -1,4 +1,3 @@
-![EPFL Center for Imaging logo](https://imaging.epfl.ch/resources/logo-for-gitlab.svg)
 # 🪐 Napari Server Kit
 
 Run [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) algorithms interactively in [Napari](https://napari.org/stable/).
