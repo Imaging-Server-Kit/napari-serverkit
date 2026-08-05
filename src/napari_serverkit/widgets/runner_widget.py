@@ -1,8 +1,9 @@
 from functools import partial
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, List
 
 from imaging_server_kit.core.stack import Stack
-from imaging_server_kit.core.algorithm import Algorithm
+
+from imaging_server_kit.core.runner import AlgorithmRunner
 from imaging_server_kit.core.tiling import TilingSpecs
 from imaging_server_kit.types import layer_factory
 import imaging_server_kit.core._etc as etc
@@ -31,8 +32,15 @@ def require_algorithm(func):
 
 
 class RunnerWidget:
-    def __init__(self, algorithm: Optional[Algorithm]):
-        self.algorithm = algorithm
+    def __init__(self, runner: AlgorithmRunner, algorithms: Optional[List[str]]=None):
+        self.runner = runner
+        
+        # We can specify a subset of algorithms to display in the dropdown
+        # (for example, when using to_qupath() we only display qupath-compatible algorithms)
+        if algorithms is None:
+            available_algorithms = self.runner.algorithms
+        else:
+            available_algorithms = [a for a in algorithms if a in self.runner.algorithms]
 
         # Layout and widget
         self._widget = QWidget()
@@ -42,6 +50,7 @@ class RunnerWidget:
 
         # Algorithms
         self.cb_algorithms = QComboBox()
+        self.cb_algorithms.addItems(available_algorithms)
         layout.addWidget(QLabel("Algorithm"), 1, 0)
         layout.addWidget(self.cb_algorithms, 1, 1)
 
@@ -113,32 +122,30 @@ class RunnerWidget:
     @property
     def update_params_trigger(self) -> Callable:
         return self.cb_algorithms.currentTextChanged  # type: ignore
+    
+    @property
+    def selected_algorithm_name(self) -> str:
+        return self.cb_algorithms.currentText()
 
     @require_algorithm
     def _download_sample(self, *args, **kwargs) -> Stack:
         try:
-            if self.algorithm:
-                sample = self.algorithm.get_sample(
-                    self.cb_algorithms.currentText(), *args, **kwargs
-                )
-                if sample is not None:
-                    return sample
+            sample = self.runner.get_sample(
+                self.cb_algorithms.currentText(), *args, **kwargs
+            )
+            if sample is not None:
+                return sample
         except:
             show_warning("Failed to download sample.")
         return Stack()
 
     @require_algorithm
     def _get_run_func(self, algo_params: Dict):
-        if not self.algorithm:
-            return
-
         algorithm: str = self.cb_algorithms.currentText()
 
-        tiled = self.cb_run_in_tiles.isChecked()
+        algo_param_defs: Dict = self.runner.get_parameters(algorithm)["properties"]
 
-        algo_param_defs: Dict = self.algorithm.get_parameters(algorithm)["properties"]
-
-        signature_params = self.algorithm.get_signature_params(algorithm)
+        signature_params = self.runner.get_signature_params(algorithm)
 
         resolved_params = etc.resolve_params(
             algo_param_defs,
@@ -156,34 +163,39 @@ class RunnerWidget:
             param_layer = layer_factory(kind=kind, data=data, name=name, **kw)
             params_stack.add(param_layer)
 
+        tiling_ctx = self._tiling_specs()
+
+        return (
+            partial(
+                self.runner.run_generator,
+                algorithm=algorithm,
+                tiling_ctx=tiling_ctx,
+                params_stack=params_stack,
+            ),
+            params_stack.extent,
+        )  # Also return the parameters extent
+    
+    def _tiling_specs(self) -> Optional[TilingSpecs]:
+        tiled = self.cb_run_in_tiles.isChecked()
         if tiled:
-            tiling_ctx = TilingSpecs(
+            return TilingSpecs(
                 tile_size=self.qds_tile_size.value(),
                 tile_overlap=self.qds_overlap.value(),
                 tile_delay=self.qds_delay.value(),
                 tile_randomize=self.cb_randomize.isChecked(),
             )
-        else:
-            tiling_ctx = None
-        
-        return partial(
-            self.algorithm.run_generator,
-            algorithm=algorithm,
-            tiling_ctx=tiling_ctx,
-            params_stack=params_stack,
-        ), params_stack.extent  # Also return the parameters extent
 
     @require_algorithm
     def _open_info_link_from_btn(self, *args, **kwargs):
-        self.algorithm.info(algorithm=self.cb_algorithms.currentText())  # type: ignore
+        self.runner.info(algorithm=self.cb_algorithms.currentText())  # type: ignore
 
     @require_algorithm
     def get_algorithm_parameters(self):
-        return self.algorithm.get_parameters(self.cb_algorithms.currentText())  # type: ignore
+        return self.runner.get_parameters(self.cb_algorithms.currentText())  # type: ignore
 
     @require_algorithm
     def update_n_samples(self):
-        n_samples_available = self.algorithm.get_n_samples(self.cb_algorithms.currentText())  # type: ignore
+        n_samples_available = self.runner.get_n_samples(self.cb_algorithms.currentText())  # type: ignore
 
         self.samples_select.clear()
         if n_samples_available == 0:
@@ -199,12 +211,12 @@ class RunnerWidget:
 
     @require_algorithm
     def update_tiled_ui(self):
-        algo_is_tileable = self.algorithm.is_tileable(self.cb_algorithms.currentText())
-        
+        algo_is_tileable = self.runner.is_tileable(self.cb_algorithms.currentText())
+
         if algo_is_tileable is False:
             # Make sure not to run in tiled mode
             self.cb_run_in_tiles.setChecked(False)
-                   
+
         self.experimental_gb.setVisible(algo_is_tileable)
 
     def _run_in_tiles_changed(self, run_in_tiles: bool):

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Type
 from dataclasses import dataclass
 import numpy as np
 
@@ -9,6 +9,19 @@ from qtpy.QtWidgets import QProgressBar
 
 from imaging_server_kit.core.stack import Stack
 from imaging_server_kit.types import Layer, layer_factory
+
+
+NAPARI_LAYER_MAPPINGS: Dict[str, Type[napari.layers.Layer]] = {
+    "image": napari.layers.Image,
+    "mask": napari.layers.Labels,
+    "points": napari.layers.Points,
+    "boxes": napari.layers.Shapes,
+    "paths": napari.layers.Shapes,
+    "vectors": napari.layers.Vectors,
+    "tracks": napari.layers.Tracks,
+}
+
+from napari_serverkit.widgets.parameter_panel import ParameterPanel
 
 
 def _set_layer_attributes_from_meta(meta: Dict, napari_layer: napari.layers.Layer):
@@ -86,6 +99,7 @@ class NapariStack(Stack):
         viewer: Optional[napari.Viewer] = None,
         pbar: Optional[QProgressBar] = None,
         layers: Optional[List[Layer]] = None,
+        params_panel: Optional[ParameterPanel] = None,
     ):
         # Create a Viewer
         if viewer is None:
@@ -103,12 +117,20 @@ class NapariStack(Stack):
 
         # Instanciate layers and add the existing Napari viewer layers to the stack
         for l in self.viewer.layers:
-            self._handle_new_layer(l)
+            self._handle_new_napari_layer(l)
 
         # Connect viewer events (layer add/remove/rename)
         self.connect_layer_added_event(self.sync_layer_added)
         self.connect_layer_removed_event(self.sync_layer_removed)
         self.connect_layer_renamed_event(self.sync_layer_renamed)
+        
+        if params_panel is not None:
+            self.parameters_panel = params_panel
+            self.connect_layer_added_event(self._on_layer_change)
+            self.connect_layer_removed_event(self._on_layer_change)
+            self.connect_layer_renamed_event(self._on_layer_change)
+            self._on_layer_change(None)
+            
 
     def connect_layer_renamed_event(self, func: Callable):
         self.viewer.layers.events.inserted.connect(
@@ -123,7 +145,7 @@ class NapariStack(Stack):
 
     def sync_layer_added(self, e):
         added_napari_layer = e.source[-1]
-        self._handle_new_layer(added_napari_layer)
+        self._handle_new_napari_layer(added_napari_layer)
 
     def sync_layer_renamed(self, e):
         viewer_layer_names = [l.name for l in self.viewer.layers]
@@ -136,7 +158,7 @@ class NapariStack(Stack):
         layer_name = e.value.name
         self.delete(layer_name)
 
-    def _handle_new_layer(self, napari_layer):
+    def _handle_new_napari_layer(self, napari_layer):
         existing_layer = self.read(napari_layer.name)
         if existing_layer is not None:
             return
@@ -245,3 +267,43 @@ class NapariStack(Stack):
             if update_func is not None:
                 ctx = UpdateContext(viewer=self.viewer, layer=layer, pbar=self.pbar)
                 update_func(ctx)
+
+    def _on_layer_change(self, *args, **kwargs):
+        for kind, cb_list in self.parameters_panel.layer_comboboxes.items():
+            layer_type: Type[napari.layers.Layer] = NAPARI_LAYER_MAPPINGS[kind]
+            for cb in cb_list:
+                cb.clear()
+                for layer in self.viewer.layers:
+                    if isinstance(layer, layer_type):
+
+                        # Napari layers data are not always in the format expected by serverkit, so we do the conversion here
+                        # and assign serverkit-formatted data to the combobox data attributes, which get retreived later as parameters
+
+                        # For boxes, extract the rectangle data from shapes layers (and convert them to Numpy)
+                        if kind == "boxes":
+                            data = None
+                            if isinstance(layer.data, list):
+                                if len(layer.data) > 0:
+                                    rectangle_data = []
+                                    for d, t in zip(layer.data, layer.shape_type):
+                                        if t == "rectangle":
+                                            rectangle_data.append(d)
+                                    if len(rectangle_data) > 0:
+                                        data = np.array(rectangle_data)
+                            cb.addItem(layer.name, data)
+
+                        # For paths, extract the path data from shapes layers
+                        elif kind == "paths":
+                            data = None
+                            if isinstance(layer.data, list):
+                                if len(layer.data) > 0:
+                                    path_data = []
+                                    for d, t in zip(layer.data, layer.shape_type):
+                                        if t == "rectangle":
+                                            path_data.append(d)
+                                    if len(path_data) > 0:
+                                        data = path_data
+                            cb.addItem(layer.name, data)
+
+                        else:
+                            cb.addItem(layer.name, layer.data)

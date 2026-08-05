@@ -9,24 +9,31 @@ from imaging_server_kit.core.errors import AlgorithmServerError
 from imaging_server_kit.remote.client import ServerRequestError
 from imaging_server_kit.types import layer_factory
 
-from napari_serverkit.widgets.parameter_panel import (
-    ParameterPanel,
-    NAPARI_LAYER_MAPPINGS,
-)
+from napari_serverkit.widgets.parameter_panel import ParameterPanel, NAPARI_LAYER_TYPES
 from napari_serverkit.widgets.task_manager import TaskManager
-from napari_serverkit.widgets.napari_stack import NapariStack
 from napari_serverkit.widgets.runner_widget import RunnerWidget
+
+from napari_serverkit.widgets.napari_stack import NapariStack
 
 
 class ServerKitWidget(QWidget):
-    def __init__(self, viewer: napari.Viewer, runner_widget: RunnerWidget):
+    def __init__(self, 
+                 viewer: napari.Viewer, 
+                 runner_widget: RunnerWidget):
         super().__init__()
+
+        # Algorithm parameters (dynamic UI)
+        self.params_panel = ParameterPanel(trigger=self._run)
 
         # Progress bar (can be accessed by NapariStack; will eventually turn into a "Stack" object)
         self.pbar = QProgressBar(minimum=0, maximum=1)  # type: ignore
 
         # Shared with NapariStack here...
-        self.napari_stack = NapariStack(viewer, pbar=self.pbar)
+        self.napari_stack = NapariStack(
+            viewer, pbar=self.pbar, params_panel=self.params_panel
+        )
+        
+        # Runner widget
         self.runner_widget = runner_widget
 
         # Layout
@@ -43,11 +50,7 @@ class ServerKitWidget(QWidget):
         # Connect the samples loading event
         self.runner_widget.samples_select_btn.clicked.connect(self._sample_triggered)
 
-        # Algorithm parameters (dynamic UI)
-        self.params_panel = ParameterPanel(
-            trigger=self._run,  # gets linked to auto_call
-            napari_stack=self.napari_stack,  # layer change events update the cbs
-        )
+        # Add the parameters panel
         layout.addWidget(self.params_panel.widget)
 
         # Run button
@@ -78,6 +81,9 @@ class ServerKitWidget(QWidget):
             # Update the parameters panel
             schema = self.runner_widget.get_algorithm_parameters()
             self.params_panel.update(schema)
+            
+            self.napari_stack._on_layer_change(None)  # Refresh dropdowns in new UI
+            
             # Update the number of samples available
             self.runner_widget.update_n_samples()
             # Check if tiled inference should be displayed or not
@@ -89,29 +95,37 @@ class ServerKitWidget(QWidget):
         algo_params = self.params_panel.get_algo_params()
 
         try:
-            task, reinitialize_domain = self.runner_widget._get_run_func(algo_params=algo_params)
+            task, reinitialize_domain = self.runner_widget._get_run_func(
+                algo_params=algo_params
+            )
         except (AlgorithmServerError, ServerRequestError) as e:
             show_warning(e.message)
-            
-        self.reinitialize_domain = reinitialize_domain  # To be able to use it in _merge_wrap..
-        
+
+        self.reinitialize_domain = (
+            reinitialize_domain  # To be able to use it in _merge_wrap..
+        )
+
         if task:
             self.tasks.add_active(task, self._merge_wrap)
 
     def _merge_wrap(self, payload):
         if payload is not None:
-            result_tile, params_tile = payload
-            
+            result_tile, params_domain = payload
+
             # New position can be offset by the position of the parameters tile
-            if (result_tile.position is not None) and (params_tile.position is not None):
-                result_tile.position = tuple([p + q for p, q in zip(params_tile.position, result_tile.position)])
+            if (result_tile.position is not None) and (
+                params_domain.position is not None
+            ):
+                result_tile.position = tuple(
+                    [p + q for p, q in zip(params_domain.position, result_tile.position)]
+                )
             else:
-                result_tile.position = params_tile.position
-            
+                result_tile.position = params_domain.position
+
             if self.reinitialize_domain is None:
                 # If inputs don't have an extent, we clear up the whole output
                 self.reinitialize_domain = self.napari_stack.extent
-            
+
             self.napari_stack.merge(result_tile, self.reinitialize_domain)
 
     def _sample_triggered(self):
@@ -125,7 +139,7 @@ class ServerKitWidget(QWidget):
 
     def _sample_emitted(self, sample: Stack):
         for sp in sample:
-            if sp.kind in NAPARI_LAYER_MAPPINGS:
+            if sp.kind in NAPARI_LAYER_TYPES:
                 if sp.data is not None:
                     layer = layer_factory(
                         kind=sp.kind, name=sp.name, data=sp.data, meta=sp.meta

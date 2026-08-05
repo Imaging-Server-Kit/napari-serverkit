@@ -1,8 +1,5 @@
-from typing import Callable, Dict, Optional, Type
+from typing import Callable, Dict, Optional
 from dataclasses import dataclass
-import numpy as np
-
-import napari.layers
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,17 +12,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from napari_serverkit.widgets.napari_stack import NapariStack
-
-NAPARI_LAYER_MAPPINGS: Dict[str, Type[napari.layers.Layer]] = {
-    "image": napari.layers.Image,
-    "mask": napari.layers.Labels,
-    "points": napari.layers.Points,
-    "boxes": napari.layers.Shapes,
-    "paths": napari.layers.Shapes,
-    "vectors": napari.layers.Vectors,
-    "tracks": napari.layers.Tracks,
-}
+NAPARI_LAYER_TYPES = ["image", "mask", "points", "boxes", "paths", "vectors", "tracks"]
 
 
 @dataclass
@@ -37,9 +24,8 @@ class UIStateItem:
 
 
 class ParameterPanel:
-    def __init__(self, trigger: Callable, napari_stack: NapariStack):
+    def __init__(self, trigger: Callable):
         self._trigger_func = trigger
-        self.napari_stack = napari_stack
 
         self.ui_state: Dict[str, UIStateItem] = {}
         self.layer_comboboxes = {}
@@ -49,11 +35,6 @@ class ParameterPanel:
 
         self.layout = QGridLayout()
         self.widget.setLayout(self.layout)
-
-        self.napari_stack.connect_layer_added_event(self._on_layer_change)
-        self.napari_stack.connect_layer_removed_event(self._on_layer_change)
-        self.napari_stack.connect_layer_renamed_event(self._on_layer_change)
-        self._on_layer_change(None)
 
     def update(self, schema: Dict):
         # Clean-up the previous dynamic UI layout
@@ -133,7 +114,7 @@ class ParameterPanel:
                 widget_value_recover_func = lambda qt_widget: None
             else:
                 # Numpy layers
-                if param_type not in NAPARI_LAYER_MAPPINGS:
+                if param_type not in NAPARI_LAYER_TYPES:
                     qt_widget = None
                     self.layer_comboboxes[param_type] = []
                 else:
@@ -157,53 +138,12 @@ class ParameterPanel:
 
             self.ui_state[param_name] = state_item
 
-        self._on_layer_change(None)  # Refresh dropdowns in new UI
-
-    def _on_layer_change(self, *args, **kwargs):
-        for kind, cb_list in self.layer_comboboxes.items():
-            layer_type: Type[napari.layers.Layer] = NAPARI_LAYER_MAPPINGS[kind]
-            for cb in cb_list:
-                cb.clear()
-                for layer in self.napari_stack.viewer.layers:
-                    if isinstance(layer, layer_type):
-
-                        # Napari layers data are not always in the format expected by serverkit, so we do the conversion here
-                        # and assign serverkit-formatted data to the combobox data attributes, which get retreived later as parameters
-
-                        # For boxes, extract the rectangle data from shapes layers (and convert them to Numpy)
-                        if kind == "boxes":
-                            data = None
-                            if isinstance(layer.data, list):
-                                if len(layer.data) > 0:
-                                    rectangle_data = []
-                                    for d, t in zip(layer.data, layer.shape_type):
-                                        if t == "rectangle":
-                                            rectangle_data.append(d)
-                                    if len(rectangle_data) > 0:
-                                        data = np.array(rectangle_data)
-                            cb.addItem(layer.name, data)
-
-                        # For paths, extract the path data from shapes layers
-                        elif kind == "paths":
-                            data = None
-                            if isinstance(layer.data, list):
-                                if len(layer.data) > 0:
-                                    path_data = []
-                                    for d, t in zip(layer.data, layer.shape_type):
-                                        if t == "rectangle":
-                                            path_data.append(d)
-                                    if len(path_data) > 0:
-                                        data = path_data
-                            cb.addItem(layer.name, data)
-
-                        else:
-                            cb.addItem(layer.name, layer.data)
-
     def get_algo_params(self) -> Dict:
         """Create a dictionary representation of parameter values based on the UI state."""
         algo_params = {}
         for name, state_item in self.ui_state.items():
-            if state_item.param_type in NAPARI_LAYER_MAPPINGS:
+            # TODO: this should be another widget_value_recover_func?
+            if state_item.param_type in NAPARI_LAYER_TYPES:
                 if state_item.qt_widget.currentText():
                     data = state_item.qt_widget.currentData()
                 else:

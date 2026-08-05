@@ -23,7 +23,7 @@ classifiers = [
 dependencies = [
     "napari[all]>=0.4.16",
     "qtpy",
-    "imaging-server-kit>=0.1",
+    "imaging-server-kit>=0.2",
     "napari-toolkit",
 ]
 
