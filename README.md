@@ -1,5 +1,9 @@
 # 🪐 Napari Server Kit
 
+> ⚠️ Since [v0.0.2](), the Napari Server Kit has been integrated directly into the [imaging-server-kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) package. We recommend using `imaging-server-kit>=0.0.2` to use algorithms in Napari instead of separately installing the Napari plugin.
+
+***
+
 Run [Imaging Server Kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) algorithms interactively in [Napari](https://napari.org/stable/).
 
 [screencast.webm](https://github.com/user-attachments/assets/1ac68cc5-da38-4430-819a-30d325a43176)
@@ -14,14 +18,6 @@ You can install `napari-serverkit` via `pip`::
 
 ```
 pip install napari-serverkit
-```
-
-or clone the project and install the development version:
-
-```
-git clone https://github.com/Imaging-Server-Kit/napari-serverkit.git
-cd napari-serverkit
-pip install -e .
 ```
 
 Then, start Napari with the Server Kit plugin from the terminal:
