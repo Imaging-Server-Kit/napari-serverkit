@@ -1,6 +1,7 @@
 # 🪐 Napari Server Kit
 
-> ⚠️ Since [v0.0.2](), the Napari Server Kit has been integrated directly into the [imaging-server-kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) package. We recommend using `imaging-server-kit>=0.0.2` to use algorithms in Napari instead of separately installing the Napari plugin.
+> [!WARNING]
+> Since [v0.0.2](https://github.com/Imaging-Server-Kit/imaging-server-kit/releases/tag/v0.2.0), the Napari Server Kit has been integrated directly into the [imaging-server-kit](https://github.com/Imaging-Server-Kit/imaging-server-kit) package. We recommend using `imaging-server-kit>=0.0.2` to use algorithms in Napari instead of separately installing the Napari plugin.
 
 ***
 
